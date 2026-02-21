@@ -1,4 +1,4 @@
-# AbletonMCP
+# Ableton Bridge
 
 **249 tools connecting Claude AI to Ableton Live** (230 core + 19 optional ElevenLabs voice/SFX tools)
 
@@ -281,3 +281,4 @@ AbletonMCP includes an optional ElevenLabs integration that provides 19 addition
 > "Transcribe the audio clip on my desktop"
 >
 > "Clone my voice from these 3 samples and use it for text-to-speech"
+
