@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AbletonMCP Beta will be documented in this file.
+All notable changes to ableton bridge will be documented in this file.
 
 ---
 
@@ -979,3 +979,4 @@ Cross-referenced the Live Object Model (Max 9), Python API stubs, and Live 12.4 
 - Bug fixes and stability improvements
 - Live 12 compatibility
 - 61 MCP tools
+
