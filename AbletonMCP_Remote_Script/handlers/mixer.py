@@ -186,6 +186,110 @@ def set_crossfade_assign(song, track_index, assign, ctrl=None):
         raise
 
 
+# --- Crossfader & Track Delay ---
+
+
+def set_crossfader(song, value, ctrl=None):
+    """Set the master crossfader position (0.0=A, 0.5=center, 1.0=B)."""
+    try:
+        cf = song.master_track.mixer_device.crossfader
+        clamped = max(cf.min, min(cf.max, float(value)))
+        cf.value = clamped
+        return {"crossfader": cf.value}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting crossfader: " + str(e))
+        raise
+
+
+def get_crossfader(song, ctrl=None):
+    """Get the master crossfader position."""
+    try:
+        cf = song.master_track.mixer_device.crossfader
+        return {"crossfader": cf.value, "min": cf.min, "max": cf.max}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting crossfader: " + str(e))
+        raise
+
+
+def set_cue_volume(song, value, ctrl=None):
+    """Set the cue/preview volume."""
+    try:
+        cv = song.master_track.mixer_device.cue_volume
+        clamped = max(cv.min, min(cv.max, float(value)))
+        cv.value = clamped
+        return {"cue_volume": cv.value}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting cue volume: " + str(e))
+        raise
+
+
+def set_track_delay(song, track_index, delay, ctrl=None):
+    """Set the track delay compensation in ms."""
+    try:
+        track = get_track(song, track_index)
+        td = track.mixer_device.track_delay
+        clamped = max(td.min, min(td.max, float(delay)))
+        td.value = clamped
+        return {"track_index": track_index, "track_delay": td.value}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting track delay: " + str(e))
+        raise
+
+
+def get_track_delay(song, track_index, ctrl=None):
+    """Get the track delay compensation value."""
+    try:
+        track = get_track(song, track_index)
+        td = track.mixer_device.track_delay
+        return {"track_index": track_index, "track_delay": td.value,
+                "min": td.min, "max": td.max}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting track delay: " + str(e))
+        raise
+
+
+def set_panning_mode(song, track_index, mode, ctrl=None):
+    """Set the panning mode for a track.
+
+    Args:
+        mode: 0=Stereo, 1=Split Stereo
+    """
+    try:
+        track = get_track(song, track_index)
+        mode = int(mode)
+        track.mixer_device.panning_mode = mode
+        return {"track_index": track_index, "panning_mode": mode}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting panning mode: " + str(e))
+        raise
+
+
+def set_split_stereo_pan(song, track_index, left=None, right=None, ctrl=None):
+    """Set split stereo pan values (when panning_mode is Split Stereo)."""
+    try:
+        track = get_track(song, track_index)
+        changes = {"track_index": track_index}
+        if left is not None:
+            lp = track.mixer_device.left_split_stereo
+            lp.value = max(lp.min, min(lp.max, float(left)))
+            changes["left_split_stereo"] = lp.value
+        if right is not None:
+            rp = track.mixer_device.right_split_stereo
+            rp.value = max(rp.min, min(rp.max, float(right)))
+            changes["right_split_stereo"] = rp.value
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting split stereo pan: " + str(e))
+        raise
+
+
 # --- Master track ---
 
 

@@ -1107,6 +1107,57 @@ def zoom_scroll_view(song, action, direction, view_name, modifier_pressed=False,
         raise
 
 
+# --- Stop All Clips ---
+
+
+def stop_all_clips(song, ctrl=None):
+    """Stop all playing clips in the Live Set."""
+    try:
+        song.stop_all_clips()
+        return {"stopped": True}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error stopping all clips: " + str(e))
+        raise
+
+
+def capture_and_insert_scene(song, ctrl=None):
+    """Capture currently playing clips into a new scene."""
+    try:
+        song.capture_and_insert_scene()
+        new_scene_idx = list(song.scenes).index(song.view.selected_scene)
+        return {
+            "captured": True,
+            "scene_index": new_scene_idx,
+            "scene_name": song.scenes[new_scene_idx].name,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error capturing scene: " + str(e))
+        raise
+
+
+def get_song_file_path(song, ctrl=None):
+    """Get the file path of the current Live Set."""
+    try:
+        return {"file_path": str(song.file_path) if song.file_path else None}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting song file path: " + str(e))
+        raise
+
+
+def set_session_record(song, enabled, ctrl=None):
+    """Enable or disable session recording."""
+    try:
+        song.session_record = bool(enabled)
+        return {"session_record": song.session_record}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting session record: " + str(e))
+        raise
+
+
 # --- Playing Clips ---
 
 

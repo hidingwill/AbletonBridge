@@ -539,6 +539,63 @@ class M4LConnection:
                 ("f", params["right"]),
                 ("s", request_id),
             ])
+        # --- Phase 17: Extended LOM Operations ---
+        elif command_type == "rack_insert_chain":
+            return self._build_osc_message("/rack_insert_chain", [
+                ("i", params["track_index"]),
+                ("i", params["device_index"]),
+                ("i", params.get("chain_index", 0)),
+                ("s", request_id),
+            ])
+        elif command_type == "chain_insert_device_m4l":
+            return self._build_osc_message("/chain_insert_device_m4l", [
+                ("i", params["track_index"]),
+                ("i", params["device_index"]),
+                ("i", params["chain_index"]),
+                ("s", params["device_uri"]),
+                ("i", params.get("target_index", 0)),
+                ("s", request_id),
+            ])
+        elif command_type == "set_drum_chain_note":
+            return self._build_osc_message("/set_drum_chain_note", [
+                ("i", params["track_index"]),
+                ("i", params["device_index"]),
+                ("i", params["chain_index"]),
+                ("i", params["note"]),
+                ("s", request_id),
+            ])
+        elif command_type == "get_take_lanes":
+            return self._build_osc_message("/get_take_lanes", [
+                ("i", params["track_index"]),
+                ("s", request_id),
+            ])
+        elif command_type == "rack_store_variation":
+            return self._build_osc_message("/rack_store_variation", [
+                ("i", params["track_index"]),
+                ("i", params["device_index"]),
+                ("s", request_id),
+            ])
+        elif command_type == "rack_recall_variation":
+            return self._build_osc_message("/rack_recall_variation", [
+                ("i", params["track_index"]),
+                ("i", params["device_index"]),
+                ("i", params["variation_index"]),
+                ("s", request_id),
+            ])
+        elif command_type == "create_arrangement_midi_clip_m4l":
+            return self._build_osc_message("/create_arrangement_midi_clip_m4l", [
+                ("i", params["track_index"]),
+                ("f", params["time"]),
+                ("f", params["length"]),
+                ("s", request_id),
+            ])
+        elif command_type == "create_arrangement_audio_clip_m4l":
+            return self._build_osc_message("/create_arrangement_audio_clip_m4l", [
+                ("i", params["track_index"]),
+                ("f", params["time"]),
+                ("f", params["length"]),
+                ("s", request_id),
+            ])
         else:
             raise ValueError(f"Unknown M4L command: {command_type}")
 
@@ -8434,6 +8491,1978 @@ def preview_browser_item(ctx: Context, uri: str = None, action: str = "preview")
         return "Preview stopped"
     name = result.get("name", "?")
     return f"Previewing: '{name}'"
+
+
+# ============================================================
+# Phase 1-4 New Tools — Session, Clips, Scenes, Mixer, Devices, Tracks
+# ============================================================
+
+# --- Phase 1: Session & Transport ---
+
+@mcp.tool()
+@_tool_handler("stopping all clips")
+def stop_all_clips(ctx: Context) -> str:
+    """Stop all playing clips in the Live Set."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("stop_all_clips", {})
+    return "All clips stopped"
+
+
+@mcp.tool()
+@_tool_handler("capturing and inserting scene")
+def capture_and_insert_scene(ctx: Context) -> str:
+    """Capture currently playing clips into a new scene (like Shift+New in Ableton)."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("capture_and_insert_scene", {})
+    scene_idx = result.get("scene_index", "?")
+    scene_name = result.get("scene_name", "?")
+    return f"Captured playing clips into new scene {scene_idx}: '{scene_name}'"
+
+
+@mcp.tool()
+@_tool_handler("getting song file path")
+def get_song_file_path(ctx: Context) -> str:
+    """Get the file path of the current Live Set."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_song_file_path", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting session record")
+def set_session_record(ctx: Context, enabled: bool) -> str:
+    """Enable or disable session recording.
+
+    Parameters:
+    - enabled: True to start session recording, False to stop
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_session_record", {"enabled": enabled})
+    state = "enabled" if result.get("session_record", enabled) else "disabled"
+    return f"Session recording {state}"
+
+
+# --- Phase 2: Clip Follow Actions & Properties ---
+
+@mcp.tool()
+@_tool_handler("getting clip follow actions")
+def get_clip_follow_actions(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Get the follow action settings for a clip.
+
+    Returns follow_action_0, follow_action_1, probability, time, enabled, linked,
+    and return_to_zero settings.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_follow_actions", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting clip follow actions")
+def set_clip_follow_actions(ctx: Context, track_index: int, clip_index: int,
+                             follow_action_0: int = None, follow_action_1: int = None,
+                             follow_action_probability: float = None,
+                             follow_action_time: float = None,
+                             follow_action_enabled: bool = None,
+                             follow_action_linked: bool = None,
+                             follow_action_return_to_zero: bool = None) -> str:
+    """Set follow action settings for a clip.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    - follow_action_0: First follow action type (0=None, 1=Stop, 2=Again, 3=Previous, 4=Next, 5=First, 6=Last, 7=Any, 8=Other, 9=Jump)
+    - follow_action_1: Second follow action type (same values as above)
+    - follow_action_probability: Probability of action A vs B (0.0 to 1.0)
+    - follow_action_time: Time before follow action triggers (in beats)
+    - follow_action_enabled: Whether follow actions are enabled
+    - follow_action_linked: Whether follow actions are linked to clip end
+    - follow_action_return_to_zero: Whether to return to clip start after follow action
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    params = {"track_index": track_index, "clip_index": clip_index}
+    if follow_action_0 is not None:
+        params["follow_action_0"] = follow_action_0
+    if follow_action_1 is not None:
+        params["follow_action_1"] = follow_action_1
+    if follow_action_probability is not None:
+        _validate_range(follow_action_probability, "follow_action_probability", 0.0, 1.0)
+        params["follow_action_probability"] = follow_action_probability
+    if follow_action_time is not None:
+        params["follow_action_time"] = follow_action_time
+    if follow_action_enabled is not None:
+        params["follow_action_enabled"] = follow_action_enabled
+    if follow_action_linked is not None:
+        params["follow_action_linked"] = follow_action_linked
+    if follow_action_return_to_zero is not None:
+        params["follow_action_return_to_zero"] = follow_action_return_to_zero
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_clip_follow_actions", params)
+    changed = result.get("changed", [])
+    return f"Updated follow actions on track {track_index} clip {clip_index}: {', '.join(changed) if changed else 'no changes'}"
+
+
+@mcp.tool()
+@_tool_handler("getting clip properties")
+def get_clip_properties(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Get extended properties of a clip including follow actions, ram_mode, groove, signature, etc.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_properties", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting clip properties")
+def set_clip_properties(ctx: Context, track_index: int, clip_index: int,
+                         muted: bool = None, velocity_amount: float = None,
+                         groove: str = None, signature_numerator: int = None,
+                         signature_denominator: int = None, ram_mode: bool = None,
+                         warping: bool = None, gain: float = None) -> str:
+    """Set multiple clip properties at once.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    - muted: Whether the clip is muted
+    - velocity_amount: Velocity scaling (0.0 to 1.0)
+    - groove: Groove name to assign
+    - signature_numerator: Time signature numerator
+    - signature_denominator: Time signature denominator
+    - ram_mode: Whether to load clip into RAM (audio clips only)
+    - warping: Whether warping is enabled (audio clips only)
+    - gain: Audio clip gain (0.0 to 1.0)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    params = {"track_index": track_index, "clip_index": clip_index}
+    if muted is not None:
+        params["muted"] = muted
+    if velocity_amount is not None:
+        _validate_range(velocity_amount, "velocity_amount", 0.0, 1.0)
+        params["velocity_amount"] = velocity_amount
+    if groove is not None:
+        params["groove"] = groove
+    if signature_numerator is not None:
+        params["signature_numerator"] = signature_numerator
+    if signature_denominator is not None:
+        params["signature_denominator"] = signature_denominator
+    if ram_mode is not None:
+        params["ram_mode"] = ram_mode
+    if warping is not None:
+        params["warping"] = warping
+    if gain is not None:
+        _validate_range(gain, "gain", 0.0, 1.0)
+        params["gain"] = gain
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_clip_properties", params)
+    changed = result.get("changed", [])
+    return f"Updated clip properties on track {track_index} clip {clip_index}: {', '.join(changed) if changed else 'no changes'}"
+
+
+@mcp.tool()
+@_tool_handler("selecting all notes")
+def select_all_notes(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Select all notes in a MIDI clip.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("select_all_notes", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+    })
+    return f"Selected all notes in clip at track {track_index}, slot {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("setting clip start time")
+def set_clip_start_time(ctx: Context, track_index: int, clip_index: int, time: float) -> str:
+    """Set the start time (position) of a clip in the arrangement.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    - time: The new start time in beats
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_clip_start_time", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "time": time,
+    })
+    return f"Set clip start time to {result.get('start_time', time)} beats"
+
+
+@mcp.tool()
+@_tool_handler("stopping track clips")
+def stop_track_clips(ctx: Context, track_index: int) -> str:
+    """Stop all clips playing on a specific track.
+
+    Parameters:
+    - track_index: The index of the track
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("stop_track_clips", {"track_index": track_index})
+    return f"Stopped all clips on track {track_index}"
+
+
+@mcp.tool()
+@_tool_handler("creating arrangement MIDI clip")
+def create_arrangement_midi_clip(ctx: Context, track_index: int, time: float, length: float) -> str:
+    """Create a new MIDI clip in the arrangement view at a specific time position.
+
+    Requires Live 12.1+ and a MIDI track.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - time: Start time in beats for the new clip
+    - length: Length of the clip in beats
+    """
+    _validate_index(track_index, "track_index")
+    if not isinstance(time, (int, float)) or time < 0:
+        raise ValueError("time must be a non-negative number")
+    if not isinstance(length, (int, float)) or length <= 0:
+        raise ValueError("length must be a positive number")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("create_arrangement_midi_clip", {
+        "track_index": track_index,
+        "time": time,
+        "length": length,
+    })
+    return f"Created arrangement MIDI clip on track {track_index} at beat {time}, length {length}"
+
+
+@mcp.tool()
+@_tool_handler("creating arrangement audio clip")
+def create_arrangement_audio_clip(ctx: Context, track_index: int, time: float, length: float) -> str:
+    """Create a new audio clip in the arrangement view at a specific time position.
+
+    Requires Live 12.2+ and an audio track.
+
+    Parameters:
+    - track_index: The index of the audio track
+    - time: Start time in beats for the new clip
+    - length: Length of the clip in beats
+    """
+    _validate_index(track_index, "track_index")
+    if not isinstance(time, (int, float)) or time < 0:
+        raise ValueError("time must be a non-negative number")
+    if not isinstance(length, (int, float)) or length <= 0:
+        raise ValueError("length must be a positive number")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("create_arrangement_audio_clip", {
+        "track_index": track_index,
+        "time": time,
+        "length": length,
+    })
+    return f"Created arrangement audio clip on track {track_index} at beat {time}, length {length}"
+
+
+# --- Phase 2: Scene Follow Actions ---
+
+@mcp.tool()
+@_tool_handler("getting scene follow actions")
+def get_scene_follow_actions(ctx: Context, scene_index: int) -> str:
+    """Get the follow action settings for a scene.
+
+    Parameters:
+    - scene_index: The index of the scene
+    """
+    _validate_index(scene_index, "scene_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_scene_follow_actions", {"scene_index": scene_index})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting scene follow actions")
+def set_scene_follow_actions(ctx: Context, scene_index: int,
+                              follow_action_0: int = None, follow_action_1: int = None,
+                              follow_action_probability: float = None,
+                              follow_action_time: float = None,
+                              follow_action_enabled: bool = None,
+                              follow_action_linked: bool = None) -> str:
+    """Set follow action settings for a scene.
+
+    Parameters:
+    - scene_index: The index of the scene
+    - follow_action_0: First follow action type (0=None, 1=Stop, 2=Again, 3=Previous, 4=Next, 5=First, 6=Last, 7=Any, 8=Other, 9=Jump)
+    - follow_action_1: Second follow action type (same values)
+    - follow_action_probability: Probability of action A vs B (0.0 to 1.0)
+    - follow_action_time: Time before follow action triggers (in beats)
+    - follow_action_enabled: Whether follow actions are enabled
+    - follow_action_linked: Whether follow actions are linked to scene end
+    """
+    _validate_index(scene_index, "scene_index")
+    params = {"scene_index": scene_index}
+    if follow_action_0 is not None:
+        params["follow_action_0"] = follow_action_0
+    if follow_action_1 is not None:
+        params["follow_action_1"] = follow_action_1
+    if follow_action_probability is not None:
+        _validate_range(follow_action_probability, "follow_action_probability", 0.0, 1.0)
+        params["follow_action_probability"] = follow_action_probability
+    if follow_action_time is not None:
+        params["follow_action_time"] = follow_action_time
+    if follow_action_enabled is not None:
+        params["follow_action_enabled"] = follow_action_enabled
+    if follow_action_linked is not None:
+        params["follow_action_linked"] = follow_action_linked
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_scene_follow_actions", params)
+    changed = result.get("changed", [])
+    return f"Updated scene {scene_index} follow actions: {', '.join(changed) if changed else 'no changes'}"
+
+
+@mcp.tool()
+@_tool_handler("firing scene as selected")
+def fire_scene_as_selected(ctx: Context, scene_index: int) -> str:
+    """Fire a scene as if it were selected (plays clips but doesn't advance selection).
+
+    Parameters:
+    - scene_index: The index of the scene to fire
+    """
+    _validate_index(scene_index, "scene_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("fire_scene_as_selected", {"scene_index": scene_index})
+    return f"Fired scene {scene_index} as selected"
+
+
+@mcp.tool()
+@_tool_handler("setting scene color")
+def set_scene_color(ctx: Context, scene_index: int, color_index: int) -> str:
+    """Set the color of a scene.
+
+    Parameters:
+    - scene_index: The index of the scene
+    - color_index: The color index (0-69, matching Ableton's color palette)
+    """
+    _validate_index(scene_index, "scene_index")
+    _validate_range(color_index, "color_index", 0, 69)
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_scene_color", {
+        "scene_index": scene_index,
+        "color_index": int(color_index),
+    })
+    return f"Set scene {scene_index} color to index {color_index}"
+
+
+# --- Phase 3: Mixer Operations ---
+
+@mcp.tool()
+@_tool_handler("setting crossfader")
+def set_crossfader(ctx: Context, value: float) -> str:
+    """Set the master crossfader position.
+
+    Parameters:
+    - value: Crossfader position (0.0=A, 0.5=center, 1.0=B)
+    """
+    _validate_range(value, "value", 0.0, 1.0)
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_crossfader", {"value": value})
+    return f"Set crossfader to {result.get('crossfader', value)}"
+
+
+@mcp.tool()
+@_tool_handler("getting crossfader")
+def get_crossfader(ctx: Context) -> str:
+    """Get the current master crossfader position and range."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_crossfader", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting cue volume")
+def set_cue_volume(ctx: Context, value: float) -> str:
+    """Set the cue/preview volume level.
+
+    Parameters:
+    - value: Cue volume (0.0 to 1.0, where 0.85 ≈ 0dB)
+    """
+    _validate_range(value, "value", 0.0, 1.0)
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_cue_volume", {"value": value})
+    return f"Set cue volume to {result.get('cue_volume', value)}"
+
+
+@mcp.tool()
+@_tool_handler("setting track delay")
+def set_track_delay(ctx: Context, track_index: int, delay: float) -> str:
+    """Set the track delay compensation in milliseconds.
+
+    Parameters:
+    - track_index: The index of the track
+    - delay: Delay time in ms (negative = earlier, positive = later)
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_track_delay", {
+        "track_index": track_index,
+        "delay": delay,
+    })
+    return f"Set track {track_index} delay to {result.get('track_delay', delay)} ms"
+
+
+@mcp.tool()
+@_tool_handler("getting track delay")
+def get_track_delay(ctx: Context, track_index: int) -> str:
+    """Get the track delay compensation value and range.
+
+    Parameters:
+    - track_index: The index of the track
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_track_delay", {"track_index": track_index})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting panning mode")
+def set_panning_mode(ctx: Context, track_index: int, mode: int) -> str:
+    """Set the panning mode for a track.
+
+    Parameters:
+    - track_index: The index of the track
+    - mode: 0 = Stereo (normal), 1 = Split Stereo (independent L/R)
+    """
+    _validate_index(track_index, "track_index")
+    if mode not in (0, 1):
+        raise ValueError("mode must be 0 (Stereo) or 1 (Split Stereo)")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_panning_mode", {
+        "track_index": track_index,
+        "mode": mode,
+    })
+    mode_name = "Stereo" if mode == 0 else "Split Stereo"
+    return f"Set track {track_index} panning mode to {mode_name}"
+
+
+@mcp.tool()
+@_tool_handler("setting split stereo pan")
+def set_split_stereo_pan(ctx: Context, track_index: int,
+                          left: float = None, right: float = None) -> str:
+    """Set the left and/or right pan values when in Split Stereo panning mode.
+
+    Parameters:
+    - track_index: The index of the track
+    - left: Left channel pan position (-1.0 to 1.0)
+    - right: Right channel pan position (-1.0 to 1.0)
+    """
+    _validate_index(track_index, "track_index")
+    if left is None and right is None:
+        raise ValueError("At least one of 'left' or 'right' must be provided")
+    params = {"track_index": track_index}
+    if left is not None:
+        _validate_range(left, "left", -1.0, 1.0)
+        params["left"] = left
+    if right is not None:
+        _validate_range(right, "right", -1.0, 1.0)
+        params["right"] = right
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_split_stereo_pan", params)
+    parts = []
+    if "left_split_stereo" in result:
+        parts.append(f"left={result['left_split_stereo']}")
+    if "right_split_stereo" in result:
+        parts.append(f"right={result['right_split_stereo']}")
+    return f"Set track {track_index} split stereo pan: {', '.join(parts)}"
+
+
+# --- Phase 3: Device/Chain Operations ---
+
+@mcp.tool()
+@_tool_handler("getting chain selector")
+def get_chain_selector(ctx: Context, track_index: int, device_index: int,
+                        track_type: str = "track") -> str:
+    """Get the chain selector value and range for a Rack device.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_chain_selector", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "track_type": track_type,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting chain selector")
+def set_chain_selector(ctx: Context, track_index: int, device_index: int,
+                        value: float, track_type: str = "track") -> str:
+    """Set the chain selector value for a Rack device.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - value: The chain selector value (typically 0-127)
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_chain_selector", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "value": value,
+        "track_type": track_type,
+    })
+    return f"Set chain selector to {result.get('chain_selector', value)}"
+
+
+@mcp.tool()
+@_tool_handler("inserting chain")
+def insert_chain(ctx: Context, track_index: int, device_index: int,
+                  index: int = 0, track_type: str = "track") -> str:
+    """Insert a new chain into a Rack device (Live 12.3+).
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - index: Position to insert the chain at (default: 0)
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(index, "index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("insert_chain", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "index": index,
+        "track_type": track_type,
+    })
+    return f"Inserted new chain at index {index} in rack on track {track_index}"
+
+
+@mcp.tool()
+@_tool_handler("inserting device into chain")
+def chain_insert_device(ctx: Context, track_index: int, device_index: int,
+                         chain_index: int, device_name: str,
+                         target_index: int = None,
+                         track_type: str = "track") -> str:
+    """Insert a device into a chain of a Rack device (Live 12.3+).
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - chain_index: The index of the chain within the rack
+    - device_name: The browser name/URI of the device to insert
+    - target_index: Position in the chain's device list to insert at (default: end)
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    params = {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+        "device_name": device_name,
+        "track_type": track_type,
+    }
+    if target_index is not None:
+        _validate_index(target_index, "target_index")
+        params["target_index"] = target_index
+    ableton = get_ableton_connection()
+    result = ableton.send_command("chain_insert_device", params)
+    return f"Inserted '{device_name}' into chain {chain_index} of rack on track {track_index}"
+
+
+@mcp.tool()
+@_tool_handler("deleting chain device")
+def delete_chain_device(ctx: Context, track_index: int, device_index: int,
+                         chain_index: int, chain_device_index: int,
+                         track_type: str = "track") -> str:
+    """Delete a device from within a chain of a Rack device.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - chain_index: The index of the chain within the rack
+    - chain_device_index: The index of the device within the chain to delete
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    _validate_index(chain_device_index, "chain_device_index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("delete_chain_device", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+        "chain_device_index": chain_device_index,
+        "track_type": track_type,
+    })
+    return f"Deleted device {chain_device_index} from chain {chain_index} of rack on track {track_index}"
+
+
+@mcp.tool()
+@_tool_handler("setting chain properties")
+def set_chain_properties(ctx: Context, track_index: int, device_index: int,
+                          chain_index: int, mute: bool = None, solo: bool = None,
+                          name: str = None, color_index: int = None,
+                          volume: float = None, panning: float = None,
+                          track_type: str = "track") -> str:
+    """Set properties of a chain within a Rack device.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - chain_index: The index of the chain
+    - mute: Mute state of the chain
+    - solo: Solo state of the chain
+    - name: Name of the chain
+    - color_index: Color index (0-69)
+    - volume: Chain volume (0.0 to 1.0)
+    - panning: Chain panning (-1.0 to 1.0)
+    - track_type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    params = {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+        "track_type": track_type,
+    }
+    if mute is not None:
+        params["mute"] = mute
+    if solo is not None:
+        params["solo"] = solo
+    if name is not None:
+        params["name"] = name
+    if color_index is not None:
+        _validate_range(color_index, "color_index", 0, 69)
+        params["color_index"] = int(color_index)
+    if volume is not None:
+        _validate_range(volume, "volume", 0.0, 1.0)
+        params["volume"] = volume
+    if panning is not None:
+        _validate_range(panning, "panning", -1.0, 1.0)
+        params["panning"] = panning
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_chain_properties", params)
+    changed = result.get("changed", [])
+    return f"Updated chain {chain_index} properties: {', '.join(changed) if changed else 'no changes'}"
+
+
+@mcp.tool()
+@_tool_handler("moving device")
+def move_device(ctx: Context, track_index: int, device_index: int,
+                 dest_track_index: int, dest_position: int,
+                 track_type: str = "track") -> str:
+    """Move a device from one track/position to another.
+
+    Parameters:
+    - track_index: Source track index
+    - device_index: Index of the device to move
+    - dest_track_index: Destination track index
+    - dest_position: Position in the destination track's device chain
+    - track_type: Source track type: "track" (default), "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(dest_track_index, "dest_track_index")
+    _validate_index(dest_position, "dest_position")
+    if track_type not in ("track", "return", "master"):
+        raise ValueError("track_type must be 'track', 'return', or 'master'")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("move_device", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "dest_track_index": dest_track_index,
+        "dest_position": dest_position,
+        "track_type": track_type,
+    })
+    return f"Moved device from track {track_index} position {device_index} to track {dest_track_index} position {dest_position}"
+
+
+# --- Phase 3: Track Operations ---
+
+@mcp.tool()
+@_tool_handler("deleting return track")
+def delete_return_track(ctx: Context, return_index: int) -> str:
+    """Delete a return track.
+
+    Parameters:
+    - return_index: The index of the return track to delete
+    """
+    _validate_index(return_index, "return_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("delete_return_track", {"return_index": return_index})
+    return f"Deleted return track {return_index}"
+
+
+@mcp.tool()
+@_tool_handler("setting track collapse")
+def set_track_collapse(ctx: Context, track_index: int, collapsed: bool) -> str:
+    """Collapse or expand a track in the arrangement/session view.
+
+    Parameters:
+    - track_index: The index of the track
+    - collapsed: True to collapse, False to expand
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_track_collapse", {
+        "track_index": track_index,
+        "collapsed": collapsed,
+    })
+    state = "collapsed" if result.get("collapsed", collapsed) else "expanded"
+    return f"Track {track_index} is now {state}"
+
+
+# ============================================================
+# Phase 5: M4L Bridge Extensions
+# ============================================================
+
+@mcp.tool()
+@_tool_handler("inserting rack chain via M4L")
+def rack_insert_chain_m4l(ctx: Context, track_index: int, device_index: int,
+                           chain_index: int = 0) -> str:
+    """Insert a new chain into a Rack device via Max for Live LOM.
+
+    This uses the M4L bridge for deeper LOM access (Live 12.3+).
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - chain_index: Position to insert the chain (default: 0)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("rack_insert_chain", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+    })
+    data = _m4l_result(result)
+    return f"Inserted chain at index {chain_index} (total chains: {data.get('chain_count', '?')})"
+
+
+@mcp.tool()
+@_tool_handler("inserting device into chain via M4L")
+def chain_insert_device_m4l(ctx: Context, track_index: int, device_index: int,
+                              chain_index: int, device_uri: str,
+                              target_index: int = 0) -> str:
+    """Insert a device into a chain of a Rack device via Max for Live LOM.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - chain_index: The index of the chain
+    - device_uri: The browser URI of the device to insert
+    - target_index: Position in the chain to insert at (default: 0)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    _validate_index(target_index, "target_index")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("chain_insert_device_m4l", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+        "device_uri": device_uri,
+        "target_index": target_index,
+    })
+    data = _m4l_result(result)
+    return f"Inserted device '{device_uri}' into chain {chain_index}"
+
+
+@mcp.tool()
+@_tool_handler("setting drum chain note")
+def set_drum_chain_note(ctx: Context, track_index: int, device_index: int,
+                         chain_index: int, note: int) -> str:
+    """Set the input note (pad assignment) for a Drum Rack chain via M4L (Live 12.3+).
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Drum Rack device
+    - chain_index: The index of the drum chain/pad
+    - note: The MIDI note number to assign (0-127)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(chain_index, "chain_index")
+    _validate_range(note, "note", 0, 127)
+    m4l = get_m4l_connection()
+    result = m4l.send_command("set_drum_chain_note", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "chain_index": chain_index,
+        "note": int(note),
+    })
+    data = _m4l_result(result)
+    return f"Set drum chain {chain_index} input note to {data.get('in_note', note)}"
+
+
+@mcp.tool()
+@_tool_handler("getting take lanes via M4L")
+def get_take_lanes_m4l(ctx: Context, track_index: int) -> str:
+    """Get take lane information for a track via Max for Live LOM.
+
+    Returns take lane names, active status, and count.
+
+    Parameters:
+    - track_index: The index of the track
+    """
+    _validate_index(track_index, "track_index")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("get_take_lanes", {
+        "track_index": track_index,
+    })
+    data = _m4l_result(result)
+    return json.dumps(data)
+
+
+@mcp.tool()
+@_tool_handler("storing rack variation")
+def rack_store_variation(ctx: Context, track_index: int, device_index: int) -> str:
+    """Store the current Rack macro state as a new variation via M4L.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("rack_store_variation", {
+        "track_index": track_index,
+        "device_index": device_index,
+    })
+    data = _m4l_result(result)
+    return "Stored new rack variation"
+
+
+@mcp.tool()
+@_tool_handler("recalling rack variation")
+def rack_recall_variation(ctx: Context, track_index: int, device_index: int,
+                           variation_index: int) -> str:
+    """Recall a stored Rack macro variation by index via M4L.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the Rack device
+    - variation_index: The index of the variation to recall
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    _validate_index(variation_index, "variation_index")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("rack_recall_variation", {
+        "track_index": track_index,
+        "device_index": device_index,
+        "variation_index": variation_index,
+    })
+    data = _m4l_result(result)
+    return f"Recalled rack variation {variation_index}"
+
+
+@mcp.tool()
+@_tool_handler("creating arrangement MIDI clip via M4L")
+def create_arrangement_midi_clip_m4l(ctx: Context, track_index: int,
+                                       time: float, length: float) -> str:
+    """Create a MIDI clip in the arrangement via Max for Live LOM.
+
+    Alternative to the TCP-based create_arrangement_midi_clip.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - time: Start time in beats
+    - length: Length of the clip in beats
+    """
+    _validate_index(track_index, "track_index")
+    if not isinstance(time, (int, float)) or time < 0:
+        raise ValueError("time must be a non-negative number")
+    if not isinstance(length, (int, float)) or length <= 0:
+        raise ValueError("length must be a positive number")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("create_arrangement_midi_clip_m4l", {
+        "track_index": track_index,
+        "time": float(time),
+        "length": float(length),
+    })
+    data = _m4l_result(result)
+    return f"Created arrangement MIDI clip on track {track_index} at beat {time}"
+
+
+@mcp.tool()
+@_tool_handler("creating arrangement audio clip via M4L")
+def create_arrangement_audio_clip_m4l(ctx: Context, track_index: int,
+                                        time: float, length: float) -> str:
+    """Create an audio clip in the arrangement via Max for Live LOM.
+
+    Alternative to the TCP-based create_arrangement_audio_clip.
+
+    Parameters:
+    - track_index: The index of the audio track
+    - time: Start time in beats
+    - length: Length of the clip in beats
+    """
+    _validate_index(track_index, "track_index")
+    if not isinstance(time, (int, float)) or time < 0:
+        raise ValueError("time must be a non-negative number")
+    if not isinstance(length, (int, float)) or length <= 0:
+        raise ValueError("length must be a positive number")
+    m4l = get_m4l_connection()
+    result = m4l.send_command("create_arrangement_audio_clip_m4l", {
+        "track_index": track_index,
+        "time": float(time),
+        "length": float(length),
+    })
+    data = _m4l_result(result)
+    return f"Created arrangement audio clip on track {track_index} at beat {time}"
+
+
+# ============================================================
+# Phase 6: Advanced Creative MCP Tools (Pure Server-Side)
+# ============================================================
+
+@mcp.tool()
+@_tool_handler("generating euclidean rhythm")
+def generate_euclidean_rhythm(ctx: Context, track_index: int, clip_index: int,
+                                steps: int, pulses: int, pitch: int = 36,
+                                velocity: int = 100, rotation: int = 0,
+                                note_length: float = 0.25,
+                                clip_length: float = None) -> str:
+    """Generate a Euclidean rhythm pattern and write it to a MIDI clip.
+
+    Euclidean rhythms distribute N pulses as evenly as possible across K steps.
+    Common patterns: (8,3)=tresillo, (8,5)=cinquillo, (16,9)=rumba.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - clip_index: The index of the clip slot (clip must exist)
+    - steps: Total number of steps in the pattern (e.g. 8, 16)
+    - pulses: Number of active hits (must be <= steps)
+    - pitch: MIDI note number for the hits (default: 36 = kick)
+    - velocity: Velocity of the hits (1-127, default: 100)
+    - rotation: Rotate the pattern by N steps (default: 0)
+    - note_length: Duration of each note in beats (default: 0.25)
+    - clip_length: Total clip length in beats (default: steps * note_length * steps/steps)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    if not isinstance(steps, int) or steps < 1:
+        raise ValueError("steps must be a positive integer")
+    if not isinstance(pulses, int) or pulses < 0 or pulses > steps:
+        raise ValueError("pulses must be between 0 and steps")
+    _validate_range(pitch, "pitch", 0, 127)
+    _validate_range(velocity, "velocity", 1, 127)
+
+    # Bjorklund's algorithm
+    def bjorklund(steps, pulses):
+        if pulses == 0:
+            return [0] * steps
+        if pulses >= steps:
+            return [1] * steps
+        pattern = [[1] for _ in range(pulses)] + [[0] for _ in range(steps - pulses)]
+        while True:
+            remainder = len(pattern) - pulses
+            if remainder <= 1:
+                break
+            new_pattern = []
+            i = 0
+            j = len(pattern) - 1
+            count = 0
+            while i < j and count < pulses:
+                new_pattern.append(pattern[i] + pattern[j])
+                i += 1
+                j -= 1
+                count += 1
+            while i <= j:
+                new_pattern.append(pattern[i])
+                i += 1
+            pattern = new_pattern
+            pulses = count
+        result = []
+        for group in pattern:
+            result.extend(group)
+        return result
+
+    pattern = bjorklund(steps, pulses)
+
+    # Apply rotation
+    if rotation != 0:
+        rotation = rotation % len(pattern)
+        pattern = pattern[rotation:] + pattern[:rotation]
+
+    # Calculate step duration
+    step_duration = note_length if note_length else 0.25
+    if clip_length is None:
+        clip_length = steps * step_duration
+
+    # Build notes
+    notes = []
+    for i, hit in enumerate(pattern):
+        if hit:
+            notes.append({
+                "pitch": int(pitch),
+                "start_time": i * step_duration,
+                "duration": note_length,
+                "velocity": int(velocity),
+            })
+
+    if not notes:
+        return "No notes generated (0 pulses)"
+
+    # Write to clip
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated Euclidean rhythm ({steps},{pulses}) with {len(notes)} hits on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("generating chord progression")
+def generate_chord_progression(ctx: Context, track_index: int, clip_index: int,
+                                 chords: str, root_note: int = 60,
+                                 beats_per_chord: float = 4.0,
+                                 velocity: int = 90,
+                                 voicing: str = "close") -> str:
+    """Generate a chord progression and write it to a MIDI clip.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - clip_index: The index of the clip slot (clip must exist)
+    - chords: Comma-separated chord names, e.g. "Cmaj,Am,Fmaj,G7" or interval-based "I,vi,IV,V"
+    - root_note: MIDI root note for relative chords (default: 60 = C4)
+    - beats_per_chord: Duration of each chord in beats (default: 4.0)
+    - velocity: Note velocity (1-127, default: 90)
+    - voicing: "close" (default), "open", or "spread"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(velocity, "velocity", 1, 127)
+
+    # Chord interval definitions (semitones from root)
+    chord_types = {
+        "maj": [0, 4, 7], "min": [0, 3, 7], "dim": [0, 3, 6], "aug": [0, 4, 8],
+        "7": [0, 4, 7, 10], "maj7": [0, 4, 7, 11], "min7": [0, 3, 7, 10],
+        "dim7": [0, 3, 6, 9], "sus2": [0, 2, 7], "sus4": [0, 5, 7],
+        "add9": [0, 4, 7, 14], "min9": [0, 3, 7, 10, 14], "9": [0, 4, 7, 10, 14],
+        "6": [0, 4, 7, 9], "min6": [0, 3, 7, 9],
+    }
+
+    # Note name to semitone offset
+    note_map = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+
+    # Roman numeral scale degrees (major scale)
+    roman_map = {
+        "I": (0, "maj"), "ii": (2, "min"), "iii": (4, "min"), "IV": (5, "maj"),
+        "V": (7, "maj"), "vi": (9, "min"), "vii": (11, "dim"),
+        "i": (0, "min"), "II": (2, "maj"), "III": (4, "maj"), "iv": (5, "min"),
+        "v": (7, "min"), "VI": (9, "maj"), "VII": (11, "maj"),
+    }
+
+    def parse_chord(name, root):
+        name = name.strip()
+        # Check roman numerals first
+        for roman, (offset, quality) in roman_map.items():
+            if name.startswith(roman):
+                suffix = name[len(roman):]
+                if suffix and suffix in chord_types:
+                    intervals = chord_types[suffix]
+                else:
+                    intervals = chord_types[quality]
+                return [root + offset + iv for iv in intervals]
+
+        # Parse note name + quality
+        if len(name) >= 1 and name[0].upper() in note_map:
+            note_offset = note_map[name[0].upper()]
+            rest = name[1:]
+            if rest.startswith("#"):
+                note_offset += 1
+                rest = rest[1:]
+            elif rest.startswith("b"):
+                note_offset -= 1
+                rest = rest[1:]
+
+            # Find nearest octave to root
+            chord_root = (root // 12) * 12 + note_offset
+            if chord_root < root - 6:
+                chord_root += 12
+
+            quality = rest.lower() if rest else "maj"
+            intervals = chord_types.get(quality, chord_types["maj"])
+            return [chord_root + iv for iv in intervals]
+
+        return [root, root + 4, root + 7]  # default major
+
+    chord_list = [c.strip() for c in chords.split(",") if c.strip()]
+    if not chord_list:
+        raise ValueError("No chords specified")
+
+    notes = []
+    for i, chord_name in enumerate(chord_list):
+        pitches = parse_chord(chord_name, root_note)
+
+        # Apply voicing
+        if voicing == "open" and len(pitches) >= 3:
+            pitches[1] += 12  # raise middle note
+        elif voicing == "spread" and len(pitches) >= 3:
+            for j in range(1, len(pitches)):
+                pitches[j] += (j * 12) // len(pitches)
+
+        start = i * beats_per_chord
+        for p in pitches:
+            notes.append({
+                "pitch": max(0, min(127, int(p))),
+                "start_time": start,
+                "duration": beats_per_chord,
+                "velocity": int(velocity),
+            })
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated {len(chord_list)} chords ({chords}) with {len(notes)} notes on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("generating drum pattern")
+def generate_drum_pattern(ctx: Context, track_index: int, clip_index: int,
+                            pattern_type: str = "four_on_floor",
+                            bars: int = 1, velocity: int = 100,
+                            swing: float = 0.0) -> str:
+    """Generate common drum patterns and write to a MIDI clip on a Drum Rack track.
+
+    Parameters:
+    - track_index: The index of the MIDI track with a Drum Rack
+    - clip_index: The index of the clip slot (clip must exist)
+    - pattern_type: Pattern name: "four_on_floor", "breakbeat", "halftime", "dnb", "hiphop", "house", "techno", "trap"
+    - bars: Number of bars (default: 1)
+    - velocity: Base velocity (1-127, default: 100)
+    - swing: Swing amount (0.0 to 1.0, default: 0.0)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(velocity, "velocity", 1, 127)
+    _validate_range(swing, "swing", 0.0, 1.0)
+
+    KICK = 36; SNARE = 38; HIHAT = 42; OH = 46; CLAP = 39; RIDE = 51; TOM = 45
+
+    # Patterns: list of (pitch, beat_position, velocity_scale)
+    patterns = {
+        "four_on_floor": [
+            (KICK, [0, 1, 2, 3], 1.0),
+            (HIHAT, [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], 0.7),
+            (SNARE, [1, 3], 0.9),
+            (OH, [0.5, 1.5, 2.5, 3.5], 0.5),
+        ],
+        "breakbeat": [
+            (KICK, [0, 0.75, 2.5], 1.0),
+            (SNARE, [1, 3], 0.9),
+            (HIHAT, [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], 0.65),
+        ],
+        "halftime": [
+            (KICK, [0, 2.5], 1.0),
+            (SNARE, [2], 0.9),
+            (HIHAT, [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], 0.6),
+        ],
+        "dnb": [
+            (KICK, [0, 1.75], 1.0),
+            (SNARE, [1, 3], 0.95),
+            (HIHAT, [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75], 0.5),
+        ],
+        "hiphop": [
+            (KICK, [0, 1.75, 2.5], 1.0),
+            (SNARE, [1, 3], 0.85),
+            (HIHAT, [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], 0.55),
+            (OH, [3.75], 0.4),
+        ],
+        "house": [
+            (KICK, [0, 1, 2, 3], 1.0),
+            (CLAP, [1, 3], 0.8),
+            (OH, [0.5, 1.5, 2.5, 3.5], 0.6),
+            (HIHAT, [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75], 0.4),
+        ],
+        "techno": [
+            (KICK, [0, 1, 2, 3], 1.0),
+            (HIHAT, [0.5, 1.5, 2.5, 3.5], 0.7),
+            (CLAP, [1, 3], 0.75),
+            (RIDE, [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], 0.35),
+        ],
+        "trap": [
+            (KICK, [0, 0.75, 2.25], 1.0),
+            (SNARE, [1, 3], 0.9),
+            (HIHAT, [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.125, 3.25, 3.375, 3.5, 3.625, 3.75, 3.875], 0.5),
+        ],
+    }
+
+    if pattern_type not in patterns:
+        raise ValueError(f"Unknown pattern_type '{pattern_type}'. Available: {', '.join(patterns.keys())}")
+
+    notes = []
+    bar_length = 4.0
+    swing_offset = swing * 0.125  # Max 1/8th note swing
+
+    for bar in range(bars):
+        offset = bar * bar_length
+        for pitch, beats, vel_scale in patterns[pattern_type]:
+            for beat in beats:
+                actual_beat = beat
+                # Apply swing to off-beat positions
+                if swing > 0 and (beat * 4) % 2 == 1:  # odd 16th positions
+                    actual_beat += swing_offset
+                notes.append({
+                    "pitch": pitch,
+                    "start_time": offset + actual_beat,
+                    "duration": 0.25,
+                    "velocity": max(1, min(127, int(velocity * vel_scale))),
+                })
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated '{pattern_type}' drum pattern ({bars} bar{'s' if bars > 1 else ''}, {len(notes)} hits) on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("humanizing notes")
+def humanize_notes(ctx: Context, track_index: int, clip_index: int,
+                     timing_amount: float = 0.02, velocity_amount: float = 10.0,
+                     pitch_range: int = 0) -> str:
+    """Add humanization (timing/velocity randomization) to notes in a MIDI clip.
+
+    Reads existing notes, applies random variation, and writes them back.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    - timing_amount: Max random timing offset in beats (default: 0.02, ~30ms at 120bpm)
+    - velocity_amount: Max random velocity variation (default: 10.0)
+    - pitch_range: Max random pitch offset in semitones (default: 0, no pitch change)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    import random
+
+    ableton = get_ableton_connection()
+
+    # Get existing notes
+    clip_notes = ableton.send_command("get_clip_notes", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "start_time": 0.0,
+        "time_span": 0.0,
+        "start_pitch": 0,
+        "pitch_span": 128,
+    })
+
+    notes = clip_notes.get("notes", [])
+    if not notes:
+        return "No notes found in clip to humanize"
+
+    # Remove existing notes
+    ableton.send_command("remove_notes", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "start_time": 0.0,
+        "time_span": 999999.0,
+        "start_pitch": 0,
+        "pitch_span": 128,
+    })
+
+    # Apply humanization
+    humanized = []
+    for note in notes:
+        new_note = dict(note)
+        if timing_amount > 0:
+            new_note["start_time"] = max(0, note["start_time"] + random.uniform(-timing_amount, timing_amount))
+        if velocity_amount > 0:
+            new_vel = note["velocity"] + random.uniform(-velocity_amount, velocity_amount)
+            new_note["velocity"] = max(1, min(127, int(new_vel)))
+        if pitch_range > 0:
+            new_pitch = note["pitch"] + random.randint(-pitch_range, pitch_range)
+            new_note["pitch"] = max(0, min(127, new_pitch))
+        humanized.append(new_note)
+
+    # Write back
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": humanized,
+    })
+
+    return f"Humanized {len(humanized)} notes (timing±{timing_amount}, velocity±{velocity_amount})"
+
+
+@mcp.tool()
+@_tool_handler("generating scale-constrained notes")
+def scale_constrained_generate(ctx: Context, track_index: int, clip_index: int,
+                                  scale_name: str = "major", root: int = 60,
+                                  note_count: int = 16, octave_range: int = 2,
+                                  note_length: float = 0.25,
+                                  velocity_min: int = 60, velocity_max: int = 120,
+                                  algorithm: str = "random") -> str:
+    """Generate notes constrained to a musical scale and write to a MIDI clip.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - clip_index: The index of the clip slot (clip must exist)
+    - scale_name: Scale type: "major", "minor", "dorian", "mixolydian", "pentatonic", "blues", "harmonic_minor", "melodic_minor", "chromatic", "whole_tone"
+    - root: Root MIDI note (default: 60 = C4)
+    - note_count: Number of notes to generate (default: 16)
+    - octave_range: Range of octaves above root (default: 2)
+    - note_length: Duration per note in beats (default: 0.25)
+    - velocity_min: Minimum velocity (default: 60)
+    - velocity_max: Maximum velocity (default: 120)
+    - algorithm: "random" (default), "ascending", "descending", "pendulum"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    import random
+
+    scales = {
+        "major": [0, 2, 4, 5, 7, 9, 11],
+        "minor": [0, 2, 3, 5, 7, 8, 10],
+        "dorian": [0, 2, 3, 5, 7, 9, 10],
+        "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+        "pentatonic": [0, 2, 4, 7, 9],
+        "blues": [0, 3, 5, 6, 7, 10],
+        "harmonic_minor": [0, 2, 3, 5, 7, 8, 11],
+        "melodic_minor": [0, 2, 3, 5, 7, 9, 11],
+        "chromatic": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "whole_tone": [0, 2, 4, 6, 8, 10],
+    }
+
+    if scale_name not in scales:
+        raise ValueError(f"Unknown scale '{scale_name}'. Available: {', '.join(scales.keys())}")
+
+    # Build all pitches in range
+    intervals = scales[scale_name]
+    pitches = []
+    root_base = root
+    for octave in range(octave_range + 1):
+        for interval in intervals:
+            p = root_base + octave * 12 + interval
+            if 0 <= p <= 127:
+                pitches.append(p)
+
+    if not pitches:
+        raise ValueError("No valid pitches in the specified range")
+
+    # Generate sequence based on algorithm
+    if algorithm == "ascending":
+        sequence = [pitches[i % len(pitches)] for i in range(note_count)]
+    elif algorithm == "descending":
+        rev = list(reversed(pitches))
+        sequence = [rev[i % len(rev)] for i in range(note_count)]
+    elif algorithm == "pendulum":
+        cycle = pitches + list(reversed(pitches[1:-1])) if len(pitches) > 2 else pitches
+        sequence = [cycle[i % len(cycle)] for i in range(note_count)]
+    else:  # random
+        sequence = [random.choice(pitches) for _ in range(note_count)]
+
+    notes = []
+    for i, pitch in enumerate(sequence):
+        notes.append({
+            "pitch": pitch,
+            "start_time": i * note_length,
+            "duration": note_length,
+            "velocity": random.randint(velocity_min, velocity_max),
+        })
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated {note_count} scale-constrained notes ({scale_name} from {root}) on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("transforming notes")
+def transform_notes(ctx: Context, track_index: int, clip_index: int,
+                      operation: str, amount: int = 0) -> str:
+    """Transform existing notes in a MIDI clip.
+
+    Parameters:
+    - track_index: The index of the track
+    - clip_index: The index of the clip slot
+    - operation: "transpose" (shift pitch by amount semitones), "reverse" (reverse note order in time),
+                 "invert" (invert pitches around center), "double_speed" (halve durations),
+                 "half_speed" (double durations), "legato" (extend notes to fill gaps)
+    - amount: Amount for transpose operation (semitones, positive=up, negative=down)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    if operation not in ("transpose", "reverse", "invert", "double_speed", "half_speed", "legato"):
+        raise ValueError("operation must be one of: transpose, reverse, invert, double_speed, half_speed, legato")
+
+    ableton = get_ableton_connection()
+    clip_notes = ableton.send_command("get_clip_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+        "start_time": 0.0, "time_span": 0.0,
+        "start_pitch": 0, "pitch_span": 128,
+    })
+
+    notes = clip_notes.get("notes", [])
+    if not notes:
+        return "No notes found to transform"
+
+    # Remove old notes
+    ableton.send_command("remove_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+        "start_time": 0.0, "time_span": 999999.0,
+        "start_pitch": 0, "pitch_span": 128,
+    })
+
+    if operation == "transpose":
+        for n in notes:
+            n["pitch"] = max(0, min(127, n["pitch"] + amount))
+
+    elif operation == "reverse":
+        if notes:
+            max_end = max(n["start_time"] + n["duration"] for n in notes)
+            for n in notes:
+                n["start_time"] = max_end - n["start_time"] - n["duration"]
+
+    elif operation == "invert":
+        pitches = [n["pitch"] for n in notes]
+        center = (min(pitches) + max(pitches)) / 2.0
+        for n in notes:
+            n["pitch"] = max(0, min(127, int(2 * center - n["pitch"])))
+
+    elif operation == "double_speed":
+        for n in notes:
+            n["start_time"] /= 2.0
+            n["duration"] /= 2.0
+
+    elif operation == "half_speed":
+        for n in notes:
+            n["start_time"] *= 2.0
+            n["duration"] *= 2.0
+
+    elif operation == "legato":
+        sorted_notes = sorted(notes, key=lambda n: (n["pitch"], n["start_time"]))
+        i = 0
+        while i < len(sorted_notes) - 1:
+            curr = sorted_notes[i]
+            nxt = sorted_notes[i + 1]
+            if curr["pitch"] == nxt["pitch"]:
+                gap = nxt["start_time"] - (curr["start_time"] + curr["duration"])
+                if gap > 0:
+                    curr["duration"] += gap
+            i += 1
+
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Transformed {len(notes)} notes with '{operation}' on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("copying notes between clips")
+def copy_notes_between_clips(ctx: Context, src_track: int, src_clip: int,
+                                dest_track: int, dest_clip: int,
+                                transpose: int = 0, time_offset: float = 0.0) -> str:
+    """Copy all notes from one MIDI clip to another, with optional transpose and time offset.
+
+    Parameters:
+    - src_track: Source track index
+    - src_clip: Source clip slot index
+    - dest_track: Destination track index
+    - dest_clip: Destination clip slot index
+    - transpose: Semitones to transpose copied notes (default: 0)
+    - time_offset: Beat offset to shift copied notes in time (default: 0.0)
+    """
+    _validate_index(src_track, "src_track")
+    _validate_index(src_clip, "src_clip")
+    _validate_index(dest_track, "dest_track")
+    _validate_index(dest_clip, "dest_clip")
+
+    ableton = get_ableton_connection()
+    clip_notes = ableton.send_command("get_clip_notes", {
+        "track_index": src_track, "clip_index": src_clip,
+        "start_time": 0.0, "time_span": 0.0,
+        "start_pitch": 0, "pitch_span": 128,
+    })
+
+    notes = clip_notes.get("notes", [])
+    if not notes:
+        return "No notes found in source clip"
+
+    copied = []
+    for n in notes:
+        new_note = dict(n)
+        new_note["pitch"] = max(0, min(127, n["pitch"] + transpose))
+        new_note["start_time"] = max(0, n["start_time"] + time_offset)
+        copied.append(new_note)
+
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": dest_track,
+        "clip_index": dest_clip,
+        "notes": copied,
+    })
+
+    return f"Copied {len(copied)} notes from track {src_track} clip {src_clip} to track {dest_track} clip {dest_clip}"
+
+
+@mcp.tool()
+@_tool_handler("generating arpeggio")
+def generate_arpeggio(ctx: Context, track_index: int, clip_index: int,
+                        pitches: str, pattern: str = "up",
+                        note_length: float = 0.25, octaves: int = 1,
+                        steps: int = 16, velocity: int = 100) -> str:
+    """Generate an arpeggiated pattern from a set of pitches.
+
+    Parameters:
+    - track_index: The index of the MIDI track
+    - clip_index: The index of the clip slot (clip must exist)
+    - pitches: Comma-separated MIDI note numbers, e.g. "60,64,67" (C major)
+    - pattern: "up", "down", "updown", "downup", "random" (default: "up")
+    - note_length: Duration of each arpeggio step in beats (default: 0.25)
+    - octaves: Number of octaves to span (default: 1)
+    - steps: Total number of arpeggio steps (default: 16)
+    - velocity: Note velocity (1-127, default: 100)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(velocity, "velocity", 1, 127)
+    import random as _random
+
+    base_pitches = sorted([int(p.strip()) for p in pitches.split(",") if p.strip()])
+    if not base_pitches:
+        raise ValueError("No valid pitches provided")
+
+    # Expand across octaves
+    all_pitches = []
+    for oct in range(octaves):
+        for p in base_pitches:
+            expanded = p + oct * 12
+            if 0 <= expanded <= 127:
+                all_pitches.append(expanded)
+
+    if not all_pitches:
+        raise ValueError("No valid pitches after octave expansion")
+
+    # Build pattern sequence
+    if pattern == "up":
+        sequence = all_pitches
+    elif pattern == "down":
+        sequence = list(reversed(all_pitches))
+    elif pattern == "updown":
+        sequence = all_pitches + list(reversed(all_pitches[1:-1])) if len(all_pitches) > 2 else all_pitches
+    elif pattern == "downup":
+        rev = list(reversed(all_pitches))
+        sequence = rev + all_pitches[1:-1] if len(all_pitches) > 2 else rev
+    elif pattern == "random":
+        sequence = all_pitches  # will be randomized per step
+    else:
+        raise ValueError(f"Unknown pattern '{pattern}'. Use: up, down, updown, downup, random")
+
+    notes = []
+    for i in range(steps):
+        if pattern == "random":
+            pitch = _random.choice(all_pitches)
+        else:
+            pitch = sequence[i % len(sequence)]
+        notes.append({
+            "pitch": pitch,
+            "start_time": i * note_length,
+            "duration": note_length * 0.9,  # slight gap between notes
+            "velocity": int(velocity),
+        })
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated {pattern} arpeggio ({steps} steps) on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("batch setting follow actions")
+def batch_set_follow_actions(ctx: Context, track_index: int,
+                               clip_indices: str,
+                               follow_action_0: int = 4,
+                               follow_action_1: int = 0,
+                               follow_action_probability: float = 1.0,
+                               follow_action_time: float = None,
+                               follow_action_enabled: bool = True,
+                               follow_action_linked: bool = True) -> str:
+    """Set follow actions on multiple clips at once.
+
+    Parameters:
+    - track_index: The track containing the clips
+    - clip_indices: Comma-separated clip slot indices, e.g. "0,1,2,3"
+    - follow_action_0: First action (default: 4=Next)
+    - follow_action_1: Second action (default: 0=None)
+    - follow_action_probability: Probability (0.0-1.0, default: 1.0)
+    - follow_action_time: Time in beats (default: None = use clip length)
+    - follow_action_enabled: Enable follow actions (default: True)
+    - follow_action_linked: Link to clip end (default: True)
+    """
+    _validate_index(track_index, "track_index")
+
+    indices = [int(i.strip()) for i in clip_indices.split(",") if i.strip()]
+    if not indices:
+        raise ValueError("No valid clip indices provided")
+
+    ableton = get_ableton_connection()
+    results = []
+    for ci in indices:
+        params = {
+            "track_index": track_index,
+            "clip_index": ci,
+            "follow_action_0": follow_action_0,
+            "follow_action_1": follow_action_1,
+            "follow_action_probability": follow_action_probability,
+            "follow_action_enabled": follow_action_enabled,
+            "follow_action_linked": follow_action_linked,
+        }
+        if follow_action_time is not None:
+            params["follow_action_time"] = follow_action_time
+        try:
+            ableton.send_command("set_clip_follow_actions", params)
+            results.append(f"clip {ci}: ok")
+        except Exception as e:
+            results.append(f"clip {ci}: {e}")
+
+    return f"Batch follow actions on track {track_index}: {'; '.join(results)}"
+
+
+@mcp.tool()
+@_tool_handler("creating automation curve")
+def create_automation_curve(ctx: Context, track_index: int, clip_index: int,
+                              parameter_name: str, curve_type: str = "sine",
+                              start_value: float = 0.0, end_value: float = 1.0,
+                              cycles: float = 1.0, points: int = 32) -> str:
+    """Generate curved automation (sine, exponential, logarithmic, linear) for a clip parameter.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - parameter_name: Name of the parameter to automate
+    - curve_type: "sine", "cosine", "exponential", "logarithmic", "linear", "triangle", "sawtooth" (default: "sine")
+    - start_value: Starting value (0.0-1.0, default: 0.0)
+    - end_value: Ending value (0.0-1.0, default: 1.0)
+    - cycles: Number of cycles for periodic curves (default: 1.0)
+    - points: Number of automation points to generate (default: 32)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+
+    # Get clip length
+    ableton = get_ableton_connection()
+    clip_info = ableton.send_command("get_clip_info", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+    })
+    clip_length = clip_info.get("length", 4.0)
+
+    automation_points = []
+    for i in range(points):
+        t = i / max(1, points - 1)  # normalized 0..1
+        time = t * clip_length
+
+        if curve_type == "linear":
+            value = start_value + (end_value - start_value) * t
+        elif curve_type == "sine":
+            value = start_value + (end_value - start_value) * (0.5 + 0.5 * math.sin(2 * math.pi * cycles * t - math.pi / 2))
+        elif curve_type == "cosine":
+            value = start_value + (end_value - start_value) * (0.5 - 0.5 * math.cos(2 * math.pi * cycles * t))
+        elif curve_type == "exponential":
+            value = start_value + (end_value - start_value) * (t ** 2)
+        elif curve_type == "logarithmic":
+            value = start_value + (end_value - start_value) * math.sqrt(t)
+        elif curve_type == "triangle":
+            phase = (t * cycles) % 1.0
+            tri = 2 * phase if phase < 0.5 else 2 * (1 - phase)
+            value = start_value + (end_value - start_value) * tri
+        elif curve_type == "sawtooth":
+            phase = (t * cycles) % 1.0
+            value = start_value + (end_value - start_value) * phase
+        else:
+            raise ValueError(f"Unknown curve_type '{curve_type}'")
+
+        value = max(0.0, min(1.0, value))
+        automation_points.append({"time": time, "value": value})
+
+    ableton.send_command("add_automation_points", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "parameter_name": parameter_name,
+        "points": automation_points,
+    })
+
+    return f"Created {curve_type} automation curve ({points} points) for '{parameter_name}' on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("randomizing clip notes")
+def randomize_clip_notes(ctx: Context, track_index: int, clip_index: int,
+                           pitch_min: int = 36, pitch_max: int = 84,
+                           note_count: int = 16, note_length: float = 0.25,
+                           velocity_min: int = 60, velocity_max: int = 120,
+                           clip_length: float = 4.0, density: float = 1.0) -> str:
+    """Generate random notes with constraints and write to a MIDI clip.
+
+    Parameters:
+    - track_index: The MIDI track index
+    - clip_index: The clip slot index (clip must exist)
+    - pitch_min: Lowest MIDI pitch (default: 36)
+    - pitch_max: Highest MIDI pitch (default: 84)
+    - note_count: Number of notes to generate (default: 16)
+    - note_length: Duration of each note (default: 0.25 beats)
+    - velocity_min: Minimum velocity (default: 60)
+    - velocity_max: Maximum velocity (default: 120)
+    - clip_length: Total length to distribute notes across (default: 4.0 beats)
+    - density: Probability each grid slot has a note (0.0-1.0, default: 1.0)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(density, "density", 0.0, 1.0)
+    import random
+
+    notes = []
+    grid_slots = int(clip_length / note_length) if note_length > 0 else note_count
+    for i in range(min(note_count, grid_slots)):
+        if random.random() > density:
+            continue
+        notes.append({
+            "pitch": random.randint(int(pitch_min), int(pitch_max)),
+            "start_time": i * note_length,
+            "duration": note_length,
+            "velocity": random.randint(int(velocity_min), int(velocity_max)),
+        })
+
+    if not notes:
+        return "No notes generated (density too low or count is 0)"
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Generated {len(notes)} random notes on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("creating polyrhythm")
+def create_polyrhythm(ctx: Context, track_index: int, clip_index: int,
+                        rhythms: str, pitches: str = "36,38,42",
+                        clip_length: float = 4.0, velocity: int = 100) -> str:
+    """Create polyrhythmic patterns by layering multiple rhythmic divisions.
+
+    Parameters:
+    - track_index: The MIDI track index
+    - clip_index: The clip slot index (clip must exist)
+    - rhythms: Comma-separated number of divisions per bar, e.g. "3,4,5" creates 3-against-4-against-5
+    - pitches: Comma-separated MIDI pitches for each rhythm layer (default: "36,38,42")
+    - clip_length: Total clip length in beats (default: 4.0)
+    - velocity: Base velocity (default: 100)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(velocity, "velocity", 1, 127)
+
+    rhythm_list = [int(r.strip()) for r in rhythms.split(",") if r.strip()]
+    pitch_list = [int(p.strip()) for p in pitches.split(",") if p.strip()]
+
+    if not rhythm_list:
+        raise ValueError("No valid rhythms provided")
+
+    notes = []
+    for layer, divisions in enumerate(rhythm_list):
+        pitch = pitch_list[layer % len(pitch_list)] if pitch_list else 60 + layer * 5
+        step = clip_length / divisions
+        for i in range(divisions):
+            notes.append({
+                "pitch": pitch,
+                "start_time": i * step,
+                "duration": step * 0.5,
+                "velocity": int(velocity),
+            })
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Created polyrhythm ({rhythms}) with {len(notes)} notes on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("creating stutter effect")
+def stutter_effect(ctx: Context, track_index: int, clip_index: int,
+                     stutter_rate: float = 0.125, stutter_count: int = 8,
+                     pitch: int = 60, velocity: int = 100,
+                     velocity_decay: float = 0.95) -> str:
+    """Create a stutter/glitch pattern by writing rapid repeated notes.
+
+    Parameters:
+    - track_index: The MIDI track index
+    - clip_index: The clip slot index (clip must exist)
+    - stutter_rate: Time between stutters in beats (default: 0.125 = 32nd note)
+    - stutter_count: Number of stutter repetitions (default: 8)
+    - pitch: MIDI note to repeat (default: 60)
+    - velocity: Starting velocity (default: 100)
+    - velocity_decay: Velocity multiplier per repetition (default: 0.95)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    _validate_range(velocity, "velocity", 1, 127)
+    _validate_range(velocity_decay, "velocity_decay", 0.0, 1.5)
+
+    notes = []
+    current_velocity = float(velocity)
+    for i in range(stutter_count):
+        notes.append({
+            "pitch": int(pitch),
+            "start_time": i * stutter_rate,
+            "duration": stutter_rate * 0.8,
+            "velocity": max(1, min(127, int(current_velocity))),
+        })
+        current_velocity *= velocity_decay
+
+    ableton = get_ableton_connection()
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "notes": notes,
+    })
+
+    return f"Created stutter effect ({stutter_count} hits at {stutter_rate} beat intervals) on track {track_index} clip {clip_index}"
+
+
+@mcp.tool()
+@_tool_handler("duplicating with variation")
+def duplicate_with_variation(ctx: Context, src_track: int, src_clip: int,
+                               dest_track: int, dest_clip: int,
+                               timing_variation: float = 0.02,
+                               velocity_variation: float = 10.0,
+                               pitch_variation: int = 0,
+                               transpose: int = 0) -> str:
+    """Duplicate a clip's notes to another clip with random humanization applied.
+
+    Combines copy + humanize in one step.
+
+    Parameters:
+    - src_track: Source track index
+    - src_clip: Source clip index
+    - dest_track: Destination track index
+    - dest_clip: Destination clip index (clip must exist)
+    - timing_variation: Max timing offset in beats (default: 0.02)
+    - velocity_variation: Max velocity variation (default: 10.0)
+    - pitch_variation: Max pitch offset in semitones (default: 0)
+    - transpose: Fixed transpose in semitones (default: 0)
+    """
+    _validate_index(src_track, "src_track")
+    _validate_index(src_clip, "src_clip")
+    _validate_index(dest_track, "dest_track")
+    _validate_index(dest_clip, "dest_clip")
+    import random
+
+    ableton = get_ableton_connection()
+    clip_notes = ableton.send_command("get_clip_notes", {
+        "track_index": src_track, "clip_index": src_clip,
+        "start_time": 0.0, "time_span": 0.0,
+        "start_pitch": 0, "pitch_span": 128,
+    })
+
+    notes = clip_notes.get("notes", [])
+    if not notes:
+        return "No notes found in source clip"
+
+    varied = []
+    for n in notes:
+        new_note = dict(n)
+        new_note["pitch"] = max(0, min(127, n["pitch"] + transpose + random.randint(-pitch_variation, pitch_variation)))
+        new_note["start_time"] = max(0, n["start_time"] + random.uniform(-timing_variation, timing_variation))
+        new_vel = n["velocity"] + random.uniform(-velocity_variation, velocity_variation)
+        new_note["velocity"] = max(1, min(127, int(new_vel)))
+        varied.append(new_note)
+
+    ableton.send_command("add_notes_to_clip", {
+        "track_index": dest_track,
+        "clip_index": dest_clip,
+        "notes": varied,
+    })
+
+    return f"Duplicated {len(varied)} notes from track {src_track} clip {src_clip} to track {dest_track} clip {dest_clip} with variation"
+
+
 def main():
     """Run the MCP server"""
     mcp.run()

@@ -75,6 +75,100 @@ def set_scene_name(song, scene_index, name, ctrl=None):
         raise
 
 
+def get_scene_follow_actions(song, scene_index, ctrl=None):
+    """Get follow action settings for a scene."""
+    try:
+        scene = get_scene(song, scene_index)
+        result = {"scene_index": scene_index, "scene_name": scene.name}
+        for prop in ("follow_action_0", "follow_action_1",
+                      "follow_action_probability", "follow_action_time",
+                      "follow_action_enabled", "follow_action_linked"):
+            try:
+                val = getattr(scene, prop)
+                if hasattr(val, 'value'):
+                    result[prop] = int(val)
+                elif isinstance(val, bool):
+                    result[prop] = val
+                elif isinstance(val, float):
+                    result[prop] = val
+                else:
+                    result[prop] = val
+            except Exception:
+                result[prop] = None
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting scene follow actions: " + str(e))
+        raise
+
+
+def set_scene_follow_actions(song, scene_index,
+                              follow_action_0=None, follow_action_1=None,
+                              follow_action_probability=None,
+                              follow_action_time=None,
+                              follow_action_enabled=None,
+                              follow_action_linked=None, ctrl=None):
+    """Set follow action settings for a scene."""
+    try:
+        scene = get_scene(song, scene_index)
+        changes = {}
+        if follow_action_0 is not None:
+            scene.follow_action_0 = int(follow_action_0)
+            changes["follow_action_0"] = int(follow_action_0)
+        if follow_action_1 is not None:
+            scene.follow_action_1 = int(follow_action_1)
+            changes["follow_action_1"] = int(follow_action_1)
+        if follow_action_probability is not None:
+            val = float(follow_action_probability)
+            scene.follow_action_probability = max(0.0, min(1.0, val))
+            changes["follow_action_probability"] = scene.follow_action_probability
+        if follow_action_time is not None:
+            scene.follow_action_time = float(follow_action_time)
+            changes["follow_action_time"] = float(follow_action_time)
+        if follow_action_enabled is not None:
+            scene.follow_action_enabled = bool(follow_action_enabled)
+            changes["follow_action_enabled"] = bool(follow_action_enabled)
+        if follow_action_linked is not None:
+            scene.follow_action_linked = bool(follow_action_linked)
+            changes["follow_action_linked"] = bool(follow_action_linked)
+        if not changes:
+            raise ValueError("No follow action parameters specified")
+        changes["scene_index"] = scene_index
+        changes["scene_name"] = scene.name
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting scene follow actions: " + str(e))
+        raise
+
+
+def fire_scene_as_selected(song, scene_index, ctrl=None):
+    """Fire a scene without moving the selection highlight."""
+    try:
+        scene = get_scene(song, scene_index)
+        scene.fire_as_selected()
+        return {"fired": True, "scene_index": scene_index}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error firing scene as selected: " + str(e))
+        raise
+
+
+def set_scene_color(song, scene_index, color_index, ctrl=None):
+    """Set the color of a scene."""
+    try:
+        scene = get_scene(song, scene_index)
+        color_index = int(color_index)
+        if color_index < 0 or color_index > 69:
+            raise ValueError("color_index must be 0-69, got {0}".format(color_index))
+        scene.color_index = color_index
+        return {"scene_index": scene_index, "color_index": scene.color_index}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting scene color: " + str(e))
+        raise
+
+
 def set_scene_tempo(song, scene_index, tempo, ctrl=None):
     """Set or clear a scene's tempo override.
 

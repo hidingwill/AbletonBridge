@@ -605,6 +605,269 @@ def set_clip_grid(song, track_index, clip_index,
         raise
 
 
+# --- Follow Actions ---
+
+
+def get_clip_follow_actions(song, track_index, clip_index, ctrl=None):
+    """Get follow action settings for a clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        result = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_name": clip.name,
+        }
+        for prop in ("follow_action_0", "follow_action_1",
+                      "follow_action_probability", "follow_action_time",
+                      "follow_action_enabled", "follow_action_linked",
+                      "follow_action_return_to_zero"):
+            try:
+                val = getattr(clip, prop)
+                if hasattr(val, 'value'):
+                    result[prop] = int(val)
+                elif isinstance(val, bool):
+                    result[prop] = val
+                elif isinstance(val, float):
+                    result[prop] = val
+                else:
+                    result[prop] = val
+            except Exception:
+                result[prop] = None
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting clip follow actions: " + str(e))
+        raise
+
+
+def set_clip_follow_actions(song, track_index, clip_index,
+                             follow_action_0=None, follow_action_1=None,
+                             follow_action_probability=None,
+                             follow_action_time=None,
+                             follow_action_enabled=None,
+                             follow_action_linked=None,
+                             follow_action_return_to_zero=None, ctrl=None):
+    """Set follow action settings for a clip.
+
+    Args:
+        follow_action_0/1: Action type enum (0=None, 1=Stop, 2=Again, 3=Prev,
+            4=Next, 5=First, 6=Last, 7=Any, 8=Other, 9=Jump)
+        follow_action_probability: 0.0-1.0 probability for action_0 vs action_1
+        follow_action_time: Time in beats before follow action triggers
+        follow_action_enabled: Enable/disable follow actions
+        follow_action_linked: Link follow action time to clip end
+        follow_action_return_to_zero: Return to clip start after follow action
+    """
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        changes = {}
+        if follow_action_0 is not None:
+            clip.follow_action_0 = int(follow_action_0)
+            changes["follow_action_0"] = int(follow_action_0)
+        if follow_action_1 is not None:
+            clip.follow_action_1 = int(follow_action_1)
+            changes["follow_action_1"] = int(follow_action_1)
+        if follow_action_probability is not None:
+            val = float(follow_action_probability)
+            clip.follow_action_probability = max(0.0, min(1.0, val))
+            changes["follow_action_probability"] = clip.follow_action_probability
+        if follow_action_time is not None:
+            clip.follow_action_time = float(follow_action_time)
+            changes["follow_action_time"] = float(follow_action_time)
+        if follow_action_enabled is not None:
+            clip.follow_action_enabled = bool(follow_action_enabled)
+            changes["follow_action_enabled"] = bool(follow_action_enabled)
+        if follow_action_linked is not None:
+            clip.follow_action_linked = bool(follow_action_linked)
+            changes["follow_action_linked"] = bool(follow_action_linked)
+        if follow_action_return_to_zero is not None:
+            clip.follow_action_return_to_zero = bool(follow_action_return_to_zero)
+            changes["follow_action_return_to_zero"] = bool(follow_action_return_to_zero)
+        if not changes:
+            raise ValueError("No follow action parameters specified")
+        changes["track_index"] = track_index
+        changes["clip_index"] = clip_index
+        changes["clip_name"] = clip.name
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting clip follow actions: " + str(e))
+        raise
+
+
+# --- Extended Clip Properties ---
+
+
+def get_clip_properties(song, track_index, clip_index, ctrl=None):
+    """Get extended clip properties including follow actions, RAM mode, etc."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        result = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "name": clip.name,
+            "length": clip.length,
+            "is_midi_clip": hasattr(clip, 'get_notes'),
+            "is_audio_clip": clip.is_audio_clip,
+            "is_playing": clip.is_playing,
+            "is_recording": clip.is_recording,
+        }
+        for prop in ("start_marker", "end_marker", "loop_start", "loop_end",
+                      "looping", "warping", "color_index", "is_triggered",
+                      "playing_position", "launch_mode", "velocity_amount",
+                      "legato", "ram_mode", "muted", "groove",
+                      "signature_numerator", "signature_denominator",
+                      "start_time", "end_time", "has_envelopes",
+                      "pitch_coarse", "pitch_fine", "gain"):
+            try:
+                result[prop] = getattr(clip, prop)
+            except Exception:
+                pass
+        for prop in ("follow_action_0", "follow_action_1",
+                      "follow_action_probability", "follow_action_time",
+                      "follow_action_enabled", "follow_action_linked"):
+            try:
+                val = getattr(clip, prop)
+                result[prop] = int(val) if hasattr(val, 'value') else val
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting clip properties: " + str(e))
+        raise
+
+
+def set_clip_properties(song, track_index, clip_index,
+                         muted=None, velocity_amount=None, groove=None,
+                         signature_numerator=None, signature_denominator=None,
+                         ram_mode=None, warping=None, gain=None, ctrl=None):
+    """Set multiple clip properties at once."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        changes = {}
+        if muted is not None:
+            clip.muted = bool(muted)
+            changes["muted"] = clip.muted
+        if velocity_amount is not None:
+            clip.velocity_amount = float(velocity_amount)
+            changes["velocity_amount"] = clip.velocity_amount
+        if groove is not None:
+            clip.groove = groove
+            changes["groove"] = clip.groove
+        if signature_numerator is not None:
+            clip.signature_numerator = int(signature_numerator)
+            changes["signature_numerator"] = clip.signature_numerator
+        if signature_denominator is not None:
+            clip.signature_denominator = int(signature_denominator)
+            changes["signature_denominator"] = clip.signature_denominator
+        if ram_mode is not None:
+            clip.ram_mode = bool(ram_mode)
+            changes["ram_mode"] = clip.ram_mode
+        if warping is not None:
+            clip.warping = bool(warping)
+            changes["warping"] = clip.warping
+        if gain is not None:
+            clip.gain = float(gain)
+            changes["gain"] = clip.gain
+        if not changes:
+            raise ValueError("No clip properties specified")
+        changes["track_index"] = track_index
+        changes["clip_index"] = clip_index
+        changes["clip_name"] = clip.name
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting clip properties: " + str(e))
+        raise
+
+
+def select_all_notes(song, track_index, clip_index, ctrl=None):
+    """Select all notes in a MIDI clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        if clip.is_audio_clip:
+            raise ValueError("select_all_notes is only for MIDI clips")
+        clip.select_all_notes()
+        return {"selected": True, "clip_name": clip.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error selecting all notes: " + str(e))
+        raise
+
+
+def set_clip_start_time(song, track_index, clip_index, time, ctrl=None):
+    """Set the start_time of a clip (arrangement position, Live 12.2+)."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        clip.start_time = float(time)
+        return {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "start_time": clip.start_time,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting clip start time: " + str(e))
+        raise
+
+
+def stop_track_clips(song, track_index, ctrl=None):
+    """Stop all clips on a specific track."""
+    try:
+        track = get_track(song, track_index)
+        track.stop_all_clips()
+        return {"stopped": True, "track_index": track_index, "track_name": track.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error stopping track clips: " + str(e))
+        raise
+
+
+def create_arrangement_midi_clip(song, track_index, time, length, ctrl=None):
+    """Create a MIDI clip in the arrangement view (Live 12.1+)."""
+    try:
+        track = get_track(song, track_index)
+        if not track.has_midi_input:
+            raise ValueError("Track {0} is not a MIDI track".format(track_index))
+        if not hasattr(track, 'create_midi_clip'):
+            raise Exception("create_midi_clip requires Live 12.1+")
+        clip = track.create_midi_clip(float(time), float(length))
+        return {
+            "created": True,
+            "track_index": track_index,
+            "clip_name": clip.name if clip else "New MIDI Clip",
+            "time": float(time),
+            "length": float(length),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error creating arrangement MIDI clip: " + str(e))
+        raise
+
+
+def create_arrangement_audio_clip(song, track_index, time, length, ctrl=None):
+    """Create an audio clip in the arrangement view (Live 12.2+)."""
+    try:
+        track = get_track(song, track_index)
+        if not track.has_audio_input:
+            raise ValueError("Track {0} is not an audio track".format(track_index))
+        if not hasattr(track, 'create_audio_clip'):
+            raise Exception("create_audio_clip requires Live 12.2+")
+        clip = track.create_audio_clip(float(time), float(length))
+        return {
+            "created": True,
+            "track_index": track_index,
+            "clip_name": clip.name if clip else "New Audio Clip",
+            "time": float(time),
+            "length": float(length),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error creating arrangement audio clip: " + str(e))
+        raise
+
+
 # --- Warp Markers ---
 
 

@@ -669,3 +669,40 @@ def insert_device(song, track_index, device_name, target_index=None, ctrl=None):
         if ctrl:
             ctrl.log_message("Error inserting device: " + str(e))
         raise
+
+
+# --- Delete Return Track & Track Collapse ---
+
+
+def delete_return_track(song, return_index, ctrl=None):
+    """Delete a return track by index."""
+    try:
+        if return_index < 0 or return_index >= len(song.return_tracks):
+            raise IndexError("Return track index {0} out of range".format(return_index))
+        track_name = song.return_tracks[return_index].name
+        song.delete_return_track(return_index)
+        return {
+            "deleted": True,
+            "track_name": track_name,
+            "return_index": return_index,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error deleting return track: " + str(e))
+        raise
+
+
+def set_track_collapse(song, track_index, collapsed, ctrl=None):
+    """Set the collapsed state of a track in Arrangement view."""
+    try:
+        track = get_track(song, track_index)
+        track.view.is_collapsed = bool(collapsed)
+        return {
+            "track_index": track_index,
+            "track_name": track.name,
+            "is_collapsed": track.view.is_collapsed,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting track collapse: " + str(e))
+        raise

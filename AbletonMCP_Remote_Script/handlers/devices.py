@@ -1379,3 +1379,179 @@ def control_looper(song, track_index, device_index, action, clip_slot_index=None
         if ctrl:
             ctrl.log_message("Error controlling looper: " + str(e))
         raise
+
+
+# --- Chain Selector & Chain Operations ---
+
+
+def get_chain_selector(song, track_index, device_index, track_type="track", ctrl=None):
+    """Get the chain selector value for a rack device."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        cs = device.chain_selector
+        return {
+            "device_name": device.name,
+            "chain_selector": cs.value,
+            "min": cs.min,
+            "max": cs.max,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting chain selector: " + str(e))
+        raise
+
+
+def set_chain_selector(song, track_index, device_index, value, track_type="track", ctrl=None):
+    """Set the chain selector value for a rack device."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        cs = device.chain_selector
+        clamped = max(cs.min, min(cs.max, float(value)))
+        cs.value = clamped
+        return {
+            "device_name": device.name,
+            "chain_selector": cs.value,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting chain selector: " + str(e))
+        raise
+
+
+def insert_chain(song, track_index, device_index, index=0, track_type="track", ctrl=None):
+    """Insert a new chain into a rack device (Live 12.3+)."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        if not hasattr(device, 'insert_chain'):
+            raise Exception("insert_chain requires Live 12.3+")
+        device.insert_chain(int(index))
+        return {
+            "device_name": device.name,
+            "chain_count": len(list(device.chains)),
+            "inserted_at": int(index),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error inserting chain: " + str(e))
+        raise
+
+
+def chain_insert_device(song, track_index, device_index, chain_index,
+                         device_name, target_index=None, track_type="track", ctrl=None):
+    """Insert a device into a chain within a rack (Live 12.3+)."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        chains = list(device.chains)
+        if chain_index < 0 or chain_index >= len(chains):
+            raise IndexError("Chain index {0} out of range (have {1} chains)".format(
+                chain_index, len(chains)))
+        chain = chains[chain_index]
+        if not hasattr(chain, 'insert_device'):
+            raise Exception("chain.insert_device requires Live 12.3+")
+        if target_index is not None:
+            chain.insert_device(str(device_name), int(target_index))
+        else:
+            chain.insert_device(str(device_name))
+        return {
+            "rack_name": device.name,
+            "chain_index": chain_index,
+            "chain_name": chain.name,
+            "device_name": device_name,
+            "inserted": True,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error inserting device into chain: " + str(e))
+        raise
+
+
+def delete_chain_device(song, track_index, device_index, chain_index,
+                         chain_device_index, track_type="track", ctrl=None):
+    """Delete a device from a chain within a rack."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        chains = list(device.chains)
+        if chain_index < 0 or chain_index >= len(chains):
+            raise IndexError("Chain index out of range")
+        chain = chains[chain_index]
+        chain_devices = list(chain.devices)
+        if chain_device_index < 0 or chain_device_index >= len(chain_devices):
+            raise IndexError("Device index out of range within chain")
+        dev_name = chain_devices[chain_device_index].name
+        chain.delete_device(chain_device_index)
+        return {
+            "deleted": True,
+            "device_name": dev_name,
+            "chain_index": chain_index,
+            "chain_name": chain.name,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error deleting chain device: " + str(e))
+        raise
+
+
+def set_chain_properties(song, track_index, device_index, chain_index,
+                          mute=None, solo=None, name=None, color_index=None,
+                          volume=None, panning=None, track_type="track", ctrl=None):
+    """Set properties on a chain within a rack device."""
+    try:
+        device = _get_rack_device(song, track_index, device_index, track_type)
+        chains = list(device.chains)
+        if chain_index < 0 or chain_index >= len(chains):
+            raise IndexError("Chain index out of range")
+        chain = chains[chain_index]
+        changes = {}
+        if mute is not None:
+            chain.mute = bool(mute)
+            changes["mute"] = chain.mute
+        if solo is not None:
+            chain.solo = bool(solo)
+            changes["solo"] = chain.solo
+        if name is not None:
+            chain.name = str(name)
+            changes["name"] = chain.name
+        if color_index is not None:
+            chain.color_index = int(color_index)
+            changes["color_index"] = chain.color_index
+        if volume is not None:
+            vol = chain.mixer_device.volume
+            vol.value = max(vol.min, min(vol.max, float(volume)))
+            changes["volume"] = vol.value
+        if panning is not None:
+            pan = chain.mixer_device.panning
+            pan.value = max(pan.min, min(pan.max, float(panning)))
+            changes["panning"] = pan.value
+        if not changes:
+            raise ValueError("No chain properties specified")
+        changes["chain_index"] = chain_index
+        changes["device_name"] = device.name
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting chain properties: " + str(e))
+        raise
+
+
+def move_device(song, track_index, device_index, dest_track_index, dest_position, track_type="track", ctrl=None):
+    """Move a device to a different position or track."""
+    try:
+        track = resolve_track(song, track_index, track_type)
+        devices = list(track.devices)
+        if device_index < 0 or device_index >= len(devices):
+            raise IndexError("Device index out of range")
+        device = devices[device_index]
+        device_name = device.name
+        dest_track = get_track(song, dest_track_index)
+        song.move_device(device, dest_track, int(dest_position))
+        return {
+            "moved": True,
+            "device_name": device_name,
+            "from_track": track_index,
+            "to_track": dest_track_index,
+            "to_position": dest_position,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error moving device: " + str(e))
+        raise

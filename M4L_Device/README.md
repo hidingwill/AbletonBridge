@@ -1,6 +1,6 @@
-# AbletonMCP Max for Live Bridge (v3.6.0)
+# AbletonMCP Max for Live Bridge (v4.0.0)
 
-Optional deep Live Object Model (LOM) access that extends the standard AbletonMCP Remote Script. Now an **Audio Effect** device (upgraded from MIDI Effect) — enabling real-time audio analysis via `plugin~`. Adds **38 tools** for:
+Optional deep Live Object Model (LOM) access that extends the standard AbletonMCP Remote Script. Now an **Audio Effect** device (upgraded from MIDI Effect) — enabling real-time audio analysis via `plugin~`. Adds **43 tools** (46 OSC commands) for:
 
 - Hidden/non-automatable parameters on any Ableton device
 - Device chain navigation inside Instrument Racks, Audio Effect Racks, and Drum Racks
@@ -21,6 +21,12 @@ Optional deep Live Object Model (LOM) access that extends the standard AbletonMC
 - Device AB comparison (save/toggle A/B presets, Live 12.3+)
 - Clip scrubbing (quantized scrub within a clip, like mouse scrubbing)
 - Split stereo panning (independent left/right pan control)
+- **NEW** Rack chain insertion via LOM (Live 12.3+)
+- **NEW** Device insertion into rack chains via LOM
+- **NEW** Drum chain input note (pad) reassignment
+- **NEW** Take lane deep access (names, active status)
+- **NEW** Rack variation store/recall via LOM
+- **NEW** Arrangement clip creation (MIDI/audio) via LOM
 
 ## What It Adds
 
@@ -46,13 +52,19 @@ Optional deep Live Object Model (LOM) access that extends the standard AbletonMC
 | Device AB comparison | No | **Yes** (Live 12.3+) |
 | Clip scrubbing (quantized) | No | **Yes** (Clip.scrub) |
 | Split stereo panning | No | **Yes** (L/R independent) |
+| Rack chain insertion (LOM) | No | **Yes** (Live 12.3+) |
+| Device into chain (LOM) | No | **Yes** (Live 12.3+) |
+| Drum chain note assignment | No | **Yes** (Live 12.3+) |
+| Take lane deep access | No | **Yes** (LOM) |
+| Rack variation store/recall | No | **Yes** (LOM) |
+| Arrangement clip creation | No | **Yes** (LOM) |
 
 ## How It Works
 
 ```
 MCP Server
-  ├── TCP :9877 → Remote Script (192 tools)
-  └── UDP :9878 / :9879 → M4L Bridge (38 tools, 41 OSC commands)
+  ├── TCP :9877 → Remote Script (242 tools)
+  └── UDP :9878 / :9879 → M4L Bridge (43 tools, 46 OSC commands)
 ```
 
 The server sends OSC commands with typed arguments. The M4L device processes them via the Live Object Model and returns URL-safe base64-encoded JSON responses. Large responses (>1.5KB) are automatically chunked into ~3.6KB UDP packets and reassembled by the server.
@@ -356,7 +368,7 @@ m4l_status()  →  "M4L bridge connected (v3.6.0)"
   - The Max patch objects (`udpreceive` and `udpsend`)
   - `server.py` (`M4LConnection` class: `send_port` and `recv_port`)
 
-## OSC Commands Reference (v3.6.0)
+## OSC Commands Reference (v4.0.0)
 
 | Address | Arguments | Description |
 |---|---|---|
@@ -397,6 +409,14 @@ m4l_status()  →  "M4L bridge connected (v3.6.0)"
 | `/clip_scrub` | `track_idx, clip_idx, action, beat_time, request_id` | **v3.6.0** Quantized clip scrub (scrub/stop_scrub) |
 | `/get_split_stereo` | `track_idx, request_id` | **v3.6.0** Read L/R split stereo pan values |
 | `/set_split_stereo` | `track_idx, left_val, right_val, request_id` | **v3.6.0** Set L/R split stereo pan values |
+| `/rack_insert_chain` | `track_idx, device_idx, chain_idx, request_id` | **v4.0.0** Insert chain into rack (Live 12.3+) |
+| `/chain_insert_device_m4l` | `track_idx, device_idx, chain_idx, device_uri, target_idx, request_id` | **v4.0.0** Insert device into rack chain |
+| `/set_drum_chain_note` | `track_idx, device_idx, chain_idx, note, request_id` | **v4.0.0** Set drum pad input note (Live 12.3+) |
+| `/get_take_lanes` | `track_idx, request_id` | **v4.0.0** Get take lane info (names, active status) |
+| `/rack_store_variation` | `track_idx, device_idx, request_id` | **v4.0.0** Store current rack macro state as variation |
+| `/rack_recall_variation` | `track_idx, device_idx, variation_idx, request_id` | **v4.0.0** Recall a stored rack variation |
+| `/create_arrangement_midi_clip_m4l` | `track_idx, time, length, request_id` | **v4.0.0** Create MIDI clip in arrangement via LOM |
+| `/create_arrangement_audio_clip_m4l` | `track_idx, time, length, request_id` | **v4.0.0** Create audio clip in arrangement via LOM |
 
 ## Technical Notes
 

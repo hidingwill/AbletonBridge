@@ -4,6 +4,93 @@ All notable changes to AbletonMCP Beta will be documented in this file.
 
 ---
 
+## v3.0.0 — 2026-02-21
+
+### Comprehensive API Gap Closure — 55 New Tools (230 → 285 core)
+
+Full gap analysis against the Live Object Model identified ~97 actionable gaps. This release implements them across all 3 layers (Remote Script, M4L Bridge, MCP Server), organized into 6 phases.
+
+#### Phase 1: Session & Transport (4 new TCP tools)
+- `stop_all_clips` — stop all playing clips in the Live Set
+- `capture_and_insert_scene` — capture currently playing clips into a new scene
+- `get_song_file_path` — get the file path of the current Live Set
+- `set_session_record` — enable/disable session recording
+
+#### Phase 2: Clip & Scene Follow Actions (13 new TCP tools)
+- `get_clip_follow_actions` / `set_clip_follow_actions` — read/write clip follow actions (action type, probability, time, enabled, linked, return to zero)
+- `get_clip_properties` / `set_clip_properties` — extended clip metadata (muted, velocity_amount, groove, signature, ram_mode, warping, gain)
+- `get_scene_follow_actions` / `set_scene_follow_actions` — scene follow action control
+- `select_all_notes` — select all notes in a MIDI clip
+- `set_clip_start_time` — set clip start position (arrangement)
+- `stop_track_clips` — stop all clips on a specific track
+- `create_arrangement_midi_clip` — create MIDI clip in arrangement (Live 12.1+)
+- `create_arrangement_audio_clip` — create audio clip in arrangement (Live 12.2+)
+- `fire_scene_as_selected` — fire scene without advancing selection
+- `set_scene_color` — set scene color index
+
+#### Phase 3: Mixer & Routing (8 new TCP tools)
+- `set_crossfader` / `get_crossfader` — master crossfader position control
+- `set_cue_volume` — cue/preview volume control
+- `set_track_delay` / `get_track_delay` — track delay compensation
+- `set_panning_mode` — stereo vs split stereo panning mode
+- `set_split_stereo_pan` — independent L/R pan values
+
+#### Phase 3: Device Chain Operations (8 new TCP tools)
+- `get_chain_selector` / `set_chain_selector` — rack chain selector value
+- `insert_chain` — insert chain into rack device (Live 12.3+)
+- `chain_insert_device` — insert device into rack chain (Live 12.3+)
+- `delete_chain_device` — delete device from rack chain
+- `set_chain_properties` — set chain mute/solo/name/color/volume/panning
+- `move_device` — move device between tracks/positions
+- `delete_return_track` — delete a return track
+- `set_track_collapse` — collapse/expand track view
+
+#### Phase 5: M4L Bridge Extensions (8 new M4L tools, bridge v4.0.0)
+- `rack_insert_chain_m4l` — insert chain via LOM (Live 12.3+)
+- `chain_insert_device_m4l` — insert device into chain via LOM
+- `set_drum_chain_note` — set drum pad input note (Live 12.3+)
+- `get_take_lanes_m4l` — deep take lane access via LOM
+- `rack_store_variation` — store rack macro state as variation
+- `rack_recall_variation` — recall stored rack variation by index
+- `create_arrangement_midi_clip_m4l` — create arrangement MIDI clip via LOM
+- `create_arrangement_audio_clip_m4l` — create arrangement audio clip via LOM
+
+#### Phase 6: Creative Generation Tools (14 new server-side tools)
+- `generate_euclidean_rhythm` — Bjorklund's algorithm for Euclidean rhythms (tresillo, cinquillo, rumba, etc.)
+- `generate_chord_progression` — chord voicings from names (Cmaj, Am, G7) or roman numerals (I, vi, IV, V)
+- `generate_drum_pattern` — preset patterns: four_on_floor, breakbeat, halftime, dnb, hiphop, house, techno, trap
+- `humanize_notes` — timing/velocity/pitch randomization on existing notes
+- `scale_constrained_generate` — generate notes within a musical scale (major, minor, dorian, pentatonic, blues, etc.)
+- `transform_notes` — transpose, reverse, invert, double/half speed, legato
+- `copy_notes_between_clips` — copy notes with optional transpose and time offset
+- `generate_arpeggio` — arpeggiate from pitches (up, down, updown, random patterns)
+- `batch_set_follow_actions` — set follow actions across multiple clips at once
+- `create_automation_curve` — sine, exponential, logarithmic, triangle, sawtooth automation shapes
+- `randomize_clip_notes` — constrained random note generation
+- `create_polyrhythm` — layered rhythmic divisions (3-against-4-against-5, etc.)
+- `stutter_effect` — rapid repeated notes with velocity decay
+- `duplicate_with_variation` — copy + humanize in one step
+
+### Remote Script Changes
+- **6 handler files modified**: `session.py` (+4), `clips.py` (+9), `scenes.py` (+4), `mixer.py` (+7), `devices.py` (+7), `tracks.py` (+2)
+- **33 new dispatch entries**: 26 modifying + 7 read-only in `__init__.py`
+- **New handler patterns**: Follow actions, clip properties, arrangement clip creation, chain operations
+
+### M4L Bridge v4.0.0
+- 8 new OSC commands: `/rack_insert_chain`, `/chain_insert_device_m4l`, `/set_drum_chain_note`, `/get_take_lanes`, `/rack_store_variation`, `/rack_recall_variation`, `/create_arrangement_midi_clip_m4l`, `/create_arrangement_audio_clip_m4l`
+- All 8 handlers follow existing patterns: `_validateApi()`, `sendResult()`/`sendError()`, error-safe
+- Copied to Suite/ and Beta/ device variants
+- Total bridge commands: 38 → **46**
+
+### MCP Server
+- 55 new `@mcp.tool()` functions (33 TCP + 8 M4L + 14 creative)
+- 8 new OSC builder cases in `_build_osc_packet()`
+- Creative tools use existing `add_notes_to_clip`, `get_clip_notes`, `remove_notes`, `add_automation_points` — no new bridge code needed
+
+### Tool count: **285** + **19 optional** (ElevenLabs) = **304 total**
+
+---
+
 ## v2.9.1 — 2026-02-15
 
 ### Hardening Round 8 — Safety, Thread-Safety, Security & Correctness (30+ fixes)
