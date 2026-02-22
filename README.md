@@ -4,6 +4,8 @@
 
 AbletonBridge gives Claude direct control over your Ableton Live session through the Model Context Protocol. Create tracks, write MIDI, design sounds, mix, automate, browse instruments, snapshot presets, and navigate deep into device chains and modulation matrices — all through natural language conversation.
 
+forked from original https://github.com/ahujasid/ableton-mcp by @ahujasid
+
 ---
 
 ## What It Can Do
@@ -110,3 +112,4 @@ See [installation_process.txt](installation_process.txt) for setup instructions,
   }
 }
 ```
+
