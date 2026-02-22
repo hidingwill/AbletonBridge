@@ -992,3 +992,219 @@ def remove_warp_marker(song, track_index, clip_index, beat_time, ctrl=None):
         if ctrl:
             ctrl.log_message("Error removing warp marker: " + str(e))
         raise
+
+
+# --- v4.0: Additional clip operations ---
+
+
+def deselect_all_notes(song, track_index, clip_index, ctrl=None):
+    """Deselect all notes in a MIDI clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        if clip.is_audio_clip:
+            raise ValueError("deselect_all_notes is only for MIDI clips")
+        clip.deselect_all_notes()
+        return {"deselected": True, "clip_name": clip.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error deselecting all notes: " + str(e))
+        raise
+
+
+def get_selected_notes(song, track_index, clip_index, ctrl=None):
+    """Get the currently selected notes in a MIDI clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        if clip.is_audio_clip:
+            raise ValueError("get_selected_notes is only for MIDI clips")
+
+        notes = []
+        if hasattr(clip, 'get_selected_notes_extended'):
+            raw = clip.get_selected_notes_extended()
+            for note in raw:
+                notes.append({
+                    "pitch": note.pitch,
+                    "start_time": note.start_time,
+                    "duration": note.duration,
+                    "velocity": note.velocity,
+                    "mute": note.mute,
+                    "note_id": getattr(note, "note_id", None),
+                    "probability": getattr(note, "probability", None),
+                    "velocity_deviation": getattr(note, "velocity_deviation", None),
+                    "release_velocity": getattr(note, "release_velocity", None),
+                })
+        elif hasattr(clip, 'get_selected_notes'):
+            raw = clip.get_selected_notes()
+            for note in raw:
+                if isinstance(note, (tuple, list)):
+                    notes.append({
+                        "pitch": note[0],
+                        "start_time": note[1],
+                        "duration": note[2],
+                        "velocity": note[3],
+                        "mute": note[4] if len(note) > 4 else False,
+                    })
+        else:
+            raise Exception("Clip does not support get_selected_notes")
+
+        return {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_name": clip.name,
+            "selected_count": len(notes),
+            "notes": notes,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting selected notes: " + str(e))
+        raise
+
+
+def set_fire_button_state(song, track_index, clip_index, state, ctrl=None):
+    """Set the clip's fire button state directly (supports all launch modes)."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        clip.set_fire_button_state(bool(state))
+        return {"track_index": track_index, "clip_index": clip_index, "fire_button_state": bool(state)}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting fire button state: " + str(e))
+        raise
+
+
+def clip_scrub_native(song, track_index, clip_index, position, ctrl=None):
+    """Start scrubbing inside a clip (via Remote Script, not M4L)."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        clip.scrub(float(position))
+        return {"scrubbing": True, "position": float(position)}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error scrubbing clip: " + str(e))
+        raise
+
+
+def clip_stop_scrub(song, track_index, clip_index, ctrl=None):
+    """Stop scrubbing a clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        clip.stop_scrub()
+        return {"stopped_scrub": True}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error stopping clip scrub: " + str(e))
+        raise
+
+
+def clip_beat_to_sample_time(song, track_index, clip_index, beat_time, ctrl=None):
+    """Convert beat time to sample time (audio clips only)."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise ValueError("beat_to_sample_time is only for audio clips")
+        sample_time = clip.beat_to_sample_time(float(beat_time))
+        return {"beat_time": float(beat_time), "sample_time": sample_time}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error converting beat to sample time: " + str(e))
+        raise
+
+
+def clip_sample_to_beat_time(song, track_index, clip_index, sample_time, ctrl=None):
+    """Convert sample time to beat time (audio clips only)."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise ValueError("sample_to_beat_time is only for audio clips")
+        beat_time = clip.sample_to_beat_time(float(sample_time))
+        return {"sample_time": float(sample_time), "beat_time": beat_time}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error converting sample to beat time: " + str(e))
+        raise
+
+
+def duplicate_clip_slot(song, track_index, clip_index, ctrl=None):
+    """Duplicate a clip slot within a track (puts copy in next free slot)."""
+    try:
+        track = get_track(song, track_index)
+        dest_index = track.duplicate_clip_slot(int(clip_index))
+        return {
+            "track_index": track_index,
+            "source_clip_index": clip_index,
+            "destination_clip_index": dest_index,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error duplicating clip slot: " + str(e))
+        raise
+
+
+# --- v4.0: Clip slot properties ---
+
+
+def get_clip_slot_properties(song, track_index, clip_index, ctrl=None):
+    """Get clip slot properties (has_stop_button, is_group_slot, color)."""
+    try:
+        track, clip_slot = get_clip_slot(song, track_index, clip_index)
+        result = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "has_clip": clip_slot.has_clip,
+        }
+        try:
+            result["has_stop_button"] = clip_slot.has_stop_button
+        except Exception:
+            result["has_stop_button"] = None
+        try:
+            result["is_group_slot"] = clip_slot.is_group_slot
+        except Exception:
+            result["is_group_slot"] = None
+        try:
+            result["color_index"] = clip_slot.color_index
+        except Exception:
+            result["color_index"] = None
+        try:
+            result["color"] = clip_slot.color
+        except Exception:
+            result["color"] = None
+        try:
+            result["is_triggered"] = clip_slot.is_triggered
+        except Exception:
+            result["is_triggered"] = None
+        try:
+            result["is_playing"] = clip_slot.is_playing
+        except Exception:
+            result["is_playing"] = None
+        try:
+            result["is_recording"] = clip_slot.is_recording
+        except Exception:
+            result["is_recording"] = None
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting clip slot properties: " + str(e))
+        raise
+
+
+def set_clip_slot_properties(song, track_index, clip_index, has_stop_button=None,
+                               color_index=None, ctrl=None):
+    """Set clip slot properties (has_stop_button, color)."""
+    try:
+        track, clip_slot = get_clip_slot(song, track_index, clip_index)
+        changes = {}
+        if has_stop_button is not None:
+            clip_slot.has_stop_button = bool(has_stop_button)
+            changes["has_stop_button"] = clip_slot.has_stop_button
+        if color_index is not None:
+            clip_slot.color_index = int(color_index)
+            changes["color_index"] = clip_slot.color_index
+        if not changes:
+            raise ValueError("No properties specified")
+        changes["track_index"] = track_index
+        changes["clip_index"] = clip_index
+        return changes
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting clip slot properties: " + str(e))
+        raise

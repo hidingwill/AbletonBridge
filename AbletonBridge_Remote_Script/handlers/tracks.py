@@ -706,3 +706,116 @@ def set_track_collapse(song, track_index, collapsed, ctrl=None):
         if ctrl:
             ctrl.log_message("Error setting track collapse: " + str(e))
         raise
+
+
+# --- v4.0: Track-level missing features ---
+
+
+def jump_in_running_session_clip(song, track_index, amount, ctrl=None):
+    """Jump forward/backward in the currently playing session clip on a track.
+
+    Args:
+        amount: Relative jump in beats (positive=forward, negative=backward).
+    """
+    try:
+        track = get_track(song, track_index)
+        if not hasattr(track, 'jump_in_running_session_clip'):
+            raise Exception("jump_in_running_session_clip not available")
+        track.jump_in_running_session_clip(float(amount))
+        return {
+            "track_index": track_index,
+            "track_name": track.name,
+            "jumped_by": float(amount),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error jumping in running session clip: " + str(e))
+        raise
+
+
+def get_track_data(song, track_index, key, ctrl=None):
+    """Get persistent data stored on a track (survives save/load)."""
+    try:
+        track = get_track(song, track_index)
+        if not hasattr(track, 'get_data'):
+            raise Exception("Track persistent data not available (requires Live 12+)")
+        value = track.get_data(str(key), "")
+        return {
+            "track_index": track_index,
+            "key": key,
+            "value": value,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting track data: " + str(e))
+        raise
+
+
+def set_track_data(song, track_index, key, value, ctrl=None):
+    """Set persistent data on a track (survives save/load in .als file)."""
+    try:
+        track = get_track(song, track_index)
+        if not hasattr(track, 'set_data'):
+            raise Exception("Track persistent data not available (requires Live 12+)")
+        track.set_data(str(key), str(value))
+        return {
+            "track_index": track_index,
+            "key": key,
+            "value": str(value),
+            "stored": True,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting track data: " + str(e))
+        raise
+
+
+def set_implicit_arm(song, track_index, enabled, ctrl=None):
+    """Set the implicit arm state of a track.
+
+    Implicit arm means the track is auto-armed when selected (common in Push workflow).
+    """
+    try:
+        track = get_track(song, track_index)
+        if not hasattr(track, 'implicit_arm'):
+            raise Exception("implicit_arm not available on this track")
+        track.implicit_arm = bool(enabled)
+        return {
+            "track_index": track_index,
+            "track_name": track.name,
+            "implicit_arm": track.implicit_arm,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting implicit arm: " + str(e))
+        raise
+
+
+def get_track_input_meters(song, track_index=None, ctrl=None):
+    """Get input meter levels for one or all tracks."""
+    try:
+        tracks_data = []
+        if track_index is not None:
+            get_track(song, track_index)  # validate bounds
+            indices = [track_index]
+        else:
+            indices = range(len(song.tracks))
+        for i in indices:
+            track = song.tracks[i]
+            info = {"index": i, "name": track.name}
+            try:
+                info["input_meter_left"] = round(track.input_meter_left, 4)
+                info["input_meter_right"] = round(track.input_meter_right, 4)
+            except Exception:
+                try:
+                    info["input_meter_level"] = round(track.input_meter_level, 4)
+                except Exception:
+                    info["input_meter_level"] = None
+            tracks_data.append(info)
+        if track_index is not None:
+            return tracks_data[0]
+        return {"tracks": tracks_data, "count": len(tracks_data)}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting track input meters: " + str(e))
+        raise

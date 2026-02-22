@@ -1533,6 +1533,29 @@ def set_chain_properties(song, track_index, device_index, chain_index,
         raise
 
 
+def set_device_enabled(song, track_index, device_index, enabled, track_type="track", ctrl=None):
+    """Toggle a device on or off (bypass).
+
+    Args:
+        enabled: True to activate, False to deactivate (bypass).
+    """
+    try:
+        track, device = _resolve_device(song, track_index, device_index, track_type)
+        # device.parameters[0] is always the "Device On" toggle
+        on_param = device.parameters[0]
+        on_param.value = 1.0 if enabled else 0.0
+        return {
+            "device_name": device.name,
+            "track_index": track_index,
+            "device_index": device_index,
+            "enabled": on_param.value > 0.5,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting device enabled: " + str(e))
+        raise
+
+
 def move_device(song, track_index, device_index, dest_track_index, dest_position, track_type="track", ctrl=None):
     """Move a device to a different position or track."""
     try:

@@ -85,6 +85,20 @@ _MODIFYING_HANDLERS = {
     "stop_all_clips": lambda song, p, ctrl: handlers.session.stop_all_clips(song, ctrl),
     "capture_and_insert_scene": lambda song, p, ctrl: handlers.session.capture_and_insert_scene(song, ctrl),
     "set_session_record": lambda song, p, ctrl: handlers.session.set_session_record(song, p.get("enabled", False), ctrl),
+    "set_song_data": lambda song, p, ctrl: handlers.session.set_song_data(
+        song, p.get("key", ""), p.get("value", ""), ctrl),
+    "end_undo_step": lambda song, p, ctrl: handlers.session.end_undo_step(song, ctrl),
+    "nudge_tempo": lambda song, p, ctrl: handlers.session.nudge_tempo(
+        song, p.get("direction", "up"), ctrl),
+    "set_draw_mode": lambda song, p, ctrl: handlers.session.set_draw_mode(
+        song, p.get("enabled", True), ctrl),
+    "set_follow_song": lambda song, p, ctrl: handlers.session.set_follow_song(
+        song, p.get("enabled", True), ctrl),
+    "select_device": lambda song, p, ctrl: handlers.session.select_device(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        p.get("track_type", "track"), ctrl),
+    "select_instrument": lambda song, p, ctrl: handlers.session.select_instrument(
+        song, p.get("track_index", 0), ctrl),
 
     # --- Tracks ---
     "create_midi_track": lambda song, p, ctrl: handlers.tracks.create_midi_track(song, p.get("index", -1), ctrl),
@@ -110,6 +124,12 @@ _MODIFYING_HANDLERS = {
         p.get("target_index"), ctrl),
     "delete_return_track": lambda song, p, ctrl: handlers.tracks.delete_return_track(song, p.get("return_index", 0), ctrl),
     "set_track_collapse": lambda song, p, ctrl: handlers.tracks.set_track_collapse(song, p.get("track_index", 0), p.get("collapsed", True), ctrl),
+    "jump_in_running_session_clip": lambda song, p, ctrl: handlers.tracks.jump_in_running_session_clip(
+        song, p.get("track_index", 0), p.get("amount", 0.0), ctrl),
+    "set_track_data": lambda song, p, ctrl: handlers.tracks.set_track_data(
+        song, p.get("track_index", 0), p.get("key", ""), p.get("value", ""), ctrl),
+    "set_implicit_arm": lambda song, p, ctrl: handlers.tracks.set_implicit_arm(
+        song, p.get("track_index", 0), p.get("enabled", True), ctrl),
 
     # --- Clips ---
     "create_clip": lambda song, p, ctrl: handlers.clips.create_clip(song, p.get("track_index", 0), p.get("clip_index", 0), p.get("length", 4.0), ctrl),
@@ -162,6 +182,19 @@ _MODIFYING_HANDLERS = {
         song, p.get("track_index", 0), p.get("time", 0.0), p.get("length", 4.0), ctrl),
     "create_arrangement_audio_clip": lambda song, p, ctrl: handlers.clips.create_arrangement_audio_clip(
         song, p.get("track_index", 0), p.get("time", 0.0), p.get("length", 4.0), ctrl),
+    "deselect_all_notes": lambda song, p, ctrl: handlers.clips.deselect_all_notes(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+    "set_fire_button_state": lambda song, p, ctrl: handlers.clips.set_fire_button_state(
+        song, p.get("track_index", 0), p.get("clip_index", 0), p.get("state", True), ctrl),
+    "clip_scrub_native": lambda song, p, ctrl: handlers.clips.clip_scrub_native(
+        song, p.get("track_index", 0), p.get("clip_index", 0), p.get("position", 0.0), ctrl),
+    "clip_stop_scrub": lambda song, p, ctrl: handlers.clips.clip_stop_scrub(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+    "duplicate_clip_slot": lambda song, p, ctrl: handlers.clips.duplicate_clip_slot(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+    "set_clip_slot_properties": lambda song, p, ctrl: handlers.clips.set_clip_slot_properties(
+        song, p.get("track_index", 0), p.get("clip_index", 0),
+        p.get("has_stop_button"), p.get("color_index"), ctrl),
 
     # --- Mixer ---
     "set_track_volume": lambda song, p, ctrl: handlers.mixer.set_track_volume(song, p.get("track_index", 0), p.get("volume", 0.85), ctrl),
@@ -296,6 +329,9 @@ _MODIFYING_HANDLERS = {
         song, p.get("track_index", 0), p.get("device_index", 0),
         p.get("dest_track_index", 0), p.get("dest_position", 0),
         track_type=p.get("track_type", "track"), ctrl=ctrl),
+    "set_device_enabled": lambda song, p, ctrl: handlers.devices.set_device_enabled(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        p.get("enabled", True), track_type=p.get("track_type", "track"), ctrl=ctrl),
 
     # --- Browser ---
     "load_browser_item": lambda song, p, ctrl: handlers.browser.load_browser_item(song, p.get("track_index", 0), p.get("item_uri", ""), ctrl),
@@ -331,10 +367,29 @@ _MODIFYING_HANDLERS = {
     "delete_time": lambda song, p, ctrl: handlers.automation.delete_time(song, p.get("start_time", 0.0), p.get("end_time", 0.0), ctrl),
     "duplicate_time": lambda song, p, ctrl: handlers.automation.duplicate_time(song, p.get("start_time", 0.0), p.get("end_time", 0.0), ctrl),
     "insert_silence": lambda song, p, ctrl: handlers.automation.insert_silence(song, p.get("position", 0.0), p.get("length", 0.0), ctrl),
+    "clear_clip_envelope": lambda song, p, ctrl: handlers.automation.clear_clip_envelope(
+        song, p.get("track_index", 0), p.get("clip_index", 0),
+        p.get("parameter_name", ""), ctrl),
+    "clear_all_clip_envelopes": lambda song, p, ctrl: handlers.automation.clear_all_clip_envelopes(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+    "create_step_automation": lambda song, p, ctrl: handlers.automation.create_step_automation(
+        song, p.get("track_index", 0), p.get("clip_index", 0),
+        p.get("parameter_name", ""), p.get("steps", []), ctrl),
 
     # --- Arrangement ---
     "duplicate_clip_to_arrangement": lambda song, p, ctrl: handlers.arrangement.duplicate_clip_to_arrangement(
         song, p.get("track_index", 0), p.get("clip_index", 0), p.get("time", 0.0), ctrl),
+    "move_arrangement_clip": lambda song, p, ctrl: handlers.arrangement.move_arrangement_clip(
+        song, p.get("track_index", 0), p.get("clip_index_in_arrangement", 0),
+        p.get("new_start_time", 0.0), ctrl),
+    "delete_arrangement_clip": lambda song, p, ctrl: handlers.arrangement.delete_arrangement_clip(
+        song, p.get("track_index", 0), p.get("clip_index_in_arrangement", 0), ctrl),
+    "set_arrangement_clip_properties": lambda song, p, ctrl: handlers.arrangement.set_arrangement_clip_properties(
+        song, p.get("track_index", 0), p.get("clip_index_in_arrangement", 0),
+        p.get("muted"), p.get("gain"), p.get("name"), p.get("color_index"),
+        p.get("loop_start"), p.get("loop_end"), p.get("looping"),
+        p.get("start_marker"), p.get("end_marker"),
+        p.get("pitch_coarse"), p.get("pitch_fine"), ctrl),
 
     # --- Audio ---
     "set_warp_mode": lambda song, p, ctrl: handlers.audio.set_warp_mode(song, p.get("track_index", 0), p.get("clip_index", 0), p.get("warp_mode", "beats"), ctrl),
@@ -465,6 +520,46 @@ _READONLY_HANDLERS = {
 
     # --- Arrangement ---
     "get_arrangement_clips": lambda song, p, ctrl: handlers.arrangement.get_arrangement_clips(song, p.get("track_index", 0), ctrl),
+    "get_arrangement_clip_info": lambda song, p, ctrl: handlers.arrangement.get_arrangement_clip_info(
+        song, p.get("track_index", 0), p.get("clip_index_in_arrangement", 0), ctrl),
+
+    # --- v4.0: New read-only commands ---
+    # Automation
+    "get_clip_automation_value": lambda song, p, ctrl: handlers.automation.get_clip_automation_value(
+        song, p.get("track_index", 0), p.get("clip_index", 0),
+        p.get("parameter_name", ""), p.get("time", 0.0), ctrl),
+    "get_clip_automation_hires": lambda song, p, ctrl: handlers.automation.get_clip_automation_hires(
+        song, p.get("track_index", 0), p.get("clip_index", 0),
+        p.get("parameter_name", ""), p.get("sample_count", 128), ctrl),
+
+    # Clips
+    "get_selected_notes": lambda song, p, ctrl: handlers.clips.get_selected_notes(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+    "clip_beat_to_sample_time": lambda song, p, ctrl: handlers.clips.clip_beat_to_sample_time(
+        song, p.get("track_index", 0), p.get("clip_index", 0), p.get("beat_time", 0.0), ctrl),
+    "clip_sample_to_beat_time": lambda song, p, ctrl: handlers.clips.clip_sample_to_beat_time(
+        song, p.get("track_index", 0), p.get("clip_index", 0), p.get("sample_time", 0.0), ctrl),
+    "get_clip_slot_properties": lambda song, p, ctrl: handlers.clips.get_clip_slot_properties(
+        song, p.get("track_index", 0), p.get("clip_index", 0), ctrl),
+
+    # Session
+    "get_song_data": lambda song, p, ctrl: handlers.session.get_song_data(
+        song, p.get("key", ""), ctrl),
+    "get_song_length": lambda song, p, ctrl: handlers.session.get_song_length(song, ctrl),
+    "get_beat_time": lambda song, p, ctrl: handlers.session.get_beat_time(song, ctrl),
+    "get_smpte_time": lambda song, p, ctrl: handlers.session.get_smpte_time(
+        song, p.get("time_format", 0), ctrl),
+    "get_all_scales": lambda song, p, ctrl: handlers.session.get_all_scales(song, ctrl),
+    "get_appointed_device": lambda song, p, ctrl: handlers.session.get_appointed_device(song, ctrl),
+    "get_count_in_duration": lambda song, p, ctrl: handlers.session.get_count_in_duration(song, ctrl),
+    "get_highlighted_clip_slot": lambda song, p, ctrl: handlers.session.get_highlighted_clip_slot(song, ctrl),
+    "get_selected_parameter": lambda song, p, ctrl: handlers.session.get_selected_parameter(song, ctrl),
+
+    # Tracks
+    "get_track_data": lambda song, p, ctrl: handlers.tracks.get_track_data(
+        song, p.get("track_index", 0), p.get("key", ""), ctrl),
+    "get_track_input_meters": lambda song, p, ctrl: handlers.tracks.get_track_input_meters(
+        song, p.get("track_index"), ctrl),
 }
 
 

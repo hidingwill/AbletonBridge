@@ -436,3 +436,164 @@ def insert_silence(song, position, length, ctrl=None):
         if ctrl:
             ctrl.log_message("Error inserting silence: " + str(e))
         raise
+
+
+# --- v4.0: Enhanced automation ---
+
+
+def clear_clip_envelope(song, track_index, clip_index, parameter_name, ctrl=None):
+    """Clear automation envelope for a specific parameter using clip.clear_envelope()."""
+    try:
+        track, clip = get_clip(song, track_index, clip_index)
+        param = _find_parameter(song, track_index, parameter_name)
+
+        if not hasattr(clip, 'clear_envelope'):
+            raise Exception("Clip does not support clear_envelope()")
+
+        clip.clear_envelope(param)
+        return {"cleared": True, "parameter": parameter_name, "track_index": track_index, "clip_index": clip_index}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error clearing clip envelope: " + str(e))
+        raise
+
+
+def clear_all_clip_envelopes(song, track_index, clip_index, ctrl=None):
+    """Clear ALL automation envelopes from a clip."""
+    try:
+        _, clip = get_clip(song, track_index, clip_index)
+
+        if not hasattr(clip, 'clear_all_envelopes'):
+            raise Exception("Clip does not support clear_all_envelopes()")
+
+        clip.clear_all_envelopes()
+        return {"cleared_all": True, "track_index": track_index, "clip_index": clip_index, "clip_name": clip.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error clearing all clip envelopes: " + str(e))
+        raise
+
+
+def get_clip_automation_value(song, track_index, clip_index, parameter_name, time, ctrl=None):
+    """Read the automation envelope value at a specific time."""
+    try:
+        track, clip = get_clip(song, track_index, clip_index)
+        param = _find_parameter(song, track_index, parameter_name)
+
+        if not hasattr(clip, 'automation_envelope'):
+            raise Exception("Clip does not support automation envelopes")
+
+        envelope = clip.automation_envelope(param)
+        if envelope is None:
+            return {"has_automation": False, "parameter": parameter_name}
+
+        time = float(time)
+        val = envelope.value_at_time(time)
+        return {
+            "parameter": parameter_name,
+            "time": time,
+            "value": round(val, 6),
+            "param_min": param.min,
+            "param_max": param.max,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting automation value: " + str(e))
+        raise
+
+
+def get_clip_automation_hires(song, track_index, clip_index, parameter_name, sample_count=128, ctrl=None):
+    """Read automation envelope with configurable sample resolution."""
+    try:
+        track, clip = get_clip(song, track_index, clip_index)
+        param = _find_parameter(song, track_index, parameter_name)
+
+        if not hasattr(clip, 'automation_envelope'):
+            return {"has_automation": False, "parameter": parameter_name, "reason": "Clip does not support automation envelopes"}
+
+        envelope = clip.automation_envelope(param)
+        if envelope is None:
+            return {"has_automation": False, "parameter": parameter_name}
+
+        sample_count = max(2, min(512, int(sample_count)))
+        clip_len = clip.length
+        if clip_len <= 0:
+            return {"has_automation": False, "parameter": parameter_name, "reason": "Clip has zero length"}
+
+        points = []
+        step = clip_len / sample_count
+        for i in range(sample_count):
+            t = i * step
+            try:
+                val = envelope.value_at_time(t)
+                points.append({"time": round(t, 4), "value": round(val, 4)})
+            except Exception:
+                pass
+
+        return {
+            "has_automation": True,
+            "parameter": parameter_name,
+            "param_min": param.min,
+            "param_max": param.max,
+            "clip_length": clip_len,
+            "sample_count": sample_count,
+            "point_count": len(points),
+            "points": points,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting hi-res automation: " + str(e))
+        raise
+
+
+def create_step_automation(song, track_index, clip_index, parameter_name, steps, ctrl=None):
+    """Create step (held-value) automation — each step holds its value for a duration.
+
+    Args:
+        steps: List of {time, value, duration} dicts. duration > 0 creates a held step.
+    """
+    try:
+        track, clip = get_clip(song, track_index, clip_index)
+        param = _find_parameter(song, track_index, parameter_name)
+
+        if not hasattr(clip, 'automation_envelope'):
+            if hasattr(clip, 'create_automation_envelope'):
+                envelope = clip.create_automation_envelope(param)
+            else:
+                raise Exception("Clip does not support automation envelopes")
+        else:
+            envelope = clip.automation_envelope(param)
+
+        if envelope is None:
+            if hasattr(clip, 'create_automation_envelope'):
+                envelope = clip.create_automation_envelope(param)
+            if envelope is None:
+                raise Exception("Could not get automation envelope for parameter '{0}'".format(parameter_name))
+
+        if hasattr(envelope, 'clear'):
+            try:
+                envelope.clear()
+            except Exception:
+                pass
+
+        clip_length = clip.length
+        for step in steps:
+            time_val = float(step.get("time", 0.0))
+            time_val = max(0.0, min(clip_length - 0.001, time_val))
+            value = float(step.get("value", 0.0))
+            duration = float(step.get("duration", 0.0))
+            duration = max(0.0, min(clip_length - time_val, duration))
+            clamped = max(param.min, min(param.max, value))
+            envelope.insert_step(time_val, duration, clamped)
+
+        return {
+            "parameter": parameter_name,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "steps_added": len(steps),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error creating step automation: " + str(e))
+            ctrl.log_message(traceback.format_exc())
+        raise

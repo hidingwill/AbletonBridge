@@ -10204,13 +10204,13 @@ def create_automation_curve(ctx: Context, track_index: int, clip_index: int,
                               parameter_name: str, curve_type: str = "sine",
                               start_value: float = 0.0, end_value: float = 1.0,
                               cycles: float = 1.0, points: int = 32) -> str:
-    """Generate curved automation (sine, exponential, logarithmic, linear) for a clip parameter.
+    """Generate curved automation for a clip parameter.
 
     Parameters:
     - track_index: The track index
     - clip_index: The clip slot index
     - parameter_name: Name of the parameter to automate
-    - curve_type: "sine", "cosine", "exponential", "logarithmic", "linear", "triangle", "sawtooth" (default: "sine")
+    - curve_type: "sine", "cosine", "exponential", "logarithmic", "linear", "triangle", "sawtooth", "s_curve", "ease_in", "ease_out", "ease_in_out", "square", "pulse", "random" (default: "sine")
     - start_value: Starting value (0.0-1.0, default: 0.0)
     - end_value: Ending value (0.0-1.0, default: 1.0)
     - cycles: Number of cycles for periodic curves (default: 1.0)
@@ -10249,6 +10249,31 @@ def create_automation_curve(ctx: Context, track_index: int, clip_index: int,
         elif curve_type == "sawtooth":
             phase = (t * cycles) % 1.0
             value = start_value + (end_value - start_value) * phase
+        elif curve_type == "s_curve":
+            # Smooth S-curve (sigmoid-like via cubic Hermite)
+            s = t * t * (3 - 2 * t)
+            value = start_value + (end_value - start_value) * s
+        elif curve_type == "ease_in":
+            # Slow start, fast end (cubic)
+            value = start_value + (end_value - start_value) * (t ** 3)
+        elif curve_type == "ease_out":
+            # Fast start, slow end (cubic)
+            value = start_value + (end_value - start_value) * (1 - (1 - t) ** 3)
+        elif curve_type == "ease_in_out":
+            # Slow start and end, fast middle (quintic)
+            s = t * t * t * (t * (t * 6 - 15) + 10)
+            value = start_value + (end_value - start_value) * s
+        elif curve_type == "square":
+            # Square wave
+            phase = (t * cycles) % 1.0
+            value = end_value if phase < 0.5 else start_value
+        elif curve_type == "pulse":
+            # Pulse wave (25% duty cycle)
+            phase = (t * cycles) % 1.0
+            value = end_value if phase < 0.25 else start_value
+        elif curve_type == "random":
+            import random
+            value = start_value + (end_value - start_value) * random.random()
         else:
             raise ValueError(f"Unknown curve_type '{curve_type}'")
 
@@ -10461,6 +10486,738 @@ def duplicate_with_variation(ctx: Context, src_track: int, src_clip: int,
     })
 
     return f"Duplicated {len(varied)} notes from track {src_track} clip {src_clip} to track {dest_track} clip {dest_clip} with variation"
+
+
+# ============================================================
+# v4.0 — New Tools: Enhanced Automation, Arrangement, Clips,
+#         Session, Tracks, Devices, Clip Slots
+# ============================================================
+
+
+# --- Enhanced Automation ---
+
+@mcp.tool()
+@_tool_handler("clearing clip envelope")
+def clear_clip_envelope(ctx: Context, track_index: int, clip_index: int,
+                         parameter_name: str) -> str:
+    """Clear automation envelope for a specific parameter using clip.clear_envelope().
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - parameter_name: Name of the parameter whose envelope to clear
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clear_clip_envelope", {
+        "track_index": track_index, "clip_index": clip_index,
+        "parameter_name": parameter_name,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("clearing all clip envelopes")
+def clear_all_clip_envelopes(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Clear ALL automation envelopes from a clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clear_all_clip_envelopes", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting automation value at time")
+def get_clip_automation_value(ctx: Context, track_index: int, clip_index: int,
+                                parameter_name: str, time: float) -> str:
+    """Read the automation envelope value at a specific time.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - parameter_name: Name of the parameter
+    - time: Time position in beats to read the value at
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_automation_value", {
+        "track_index": track_index, "clip_index": clip_index,
+        "parameter_name": parameter_name, "time": time,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting hi-res automation")
+def get_clip_automation_hires(ctx: Context, track_index: int, clip_index: int,
+                                parameter_name: str, sample_count: int = 128) -> str:
+    """Read automation envelope with configurable sample resolution.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - parameter_name: Name of the parameter
+    - sample_count: Number of sample points (2-512, default: 128)
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_automation_hires", {
+        "track_index": track_index, "clip_index": clip_index,
+        "parameter_name": parameter_name, "sample_count": sample_count,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("creating step automation")
+def create_step_automation(ctx: Context, track_index: int, clip_index: int,
+                             parameter_name: str, steps: list) -> str:
+    """Create step (held-value) automation — each step holds its value for a duration.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - parameter_name: Name of the parameter to automate
+    - steps: List of {time, value, duration} dicts. duration > 0 creates a held step.
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("create_step_automation", {
+        "track_index": track_index, "clip_index": clip_index,
+        "parameter_name": parameter_name, "steps": steps,
+    })
+    return json.dumps(result)
+
+
+# --- Arrangement Clip Manipulation ---
+
+@mcp.tool()
+@_tool_handler("moving arrangement clip")
+def move_arrangement_clip(ctx: Context, track_index: int,
+                            clip_index_in_arrangement: int,
+                            new_start_time: float) -> str:
+    """Move an arrangement clip to a new start position (Live 12.2+).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index_in_arrangement: Index of the clip in track.arrangement_clips
+    - new_start_time: New start position in beats
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index_in_arrangement, "clip_index_in_arrangement")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("move_arrangement_clip", {
+        "track_index": track_index,
+        "clip_index_in_arrangement": clip_index_in_arrangement,
+        "new_start_time": new_start_time,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("deleting arrangement clip")
+def delete_arrangement_clip(ctx: Context, track_index: int,
+                              clip_index_in_arrangement: int) -> str:
+    """Delete an arrangement clip by its index.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index_in_arrangement: Index of the clip in track.arrangement_clips
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index_in_arrangement, "clip_index_in_arrangement")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("delete_arrangement_clip", {
+        "track_index": track_index,
+        "clip_index_in_arrangement": clip_index_in_arrangement,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting arrangement clip properties")
+def set_arrangement_clip_properties(ctx: Context, track_index: int,
+                                      clip_index_in_arrangement: int,
+                                      muted: Optional[bool] = None,
+                                      gain: Optional[float] = None,
+                                      name: Optional[str] = None,
+                                      color_index: Optional[int] = None,
+                                      loop_start: Optional[float] = None,
+                                      loop_end: Optional[float] = None,
+                                      looping: Optional[bool] = None,
+                                      start_marker: Optional[float] = None,
+                                      end_marker: Optional[float] = None,
+                                      pitch_coarse: Optional[int] = None,
+                                      pitch_fine: Optional[int] = None) -> str:
+    """Set properties on an arrangement clip (mute, gain, name, color, loop, pitch).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index_in_arrangement: Index of the clip in track.arrangement_clips
+    - muted: Mute/unmute the clip
+    - gain: Audio clip gain
+    - name: Clip name
+    - color_index: Color index
+    - loop_start/loop_end: Loop boundaries
+    - looping: Enable/disable looping
+    - start_marker/end_marker: Clip markers
+    - pitch_coarse: Coarse pitch in semitones
+    - pitch_fine: Fine pitch in cents
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index_in_arrangement, "clip_index_in_arrangement")
+    params = {
+        "track_index": track_index,
+        "clip_index_in_arrangement": clip_index_in_arrangement,
+    }
+    for key, val in [("muted", muted), ("gain", gain), ("name", name),
+                     ("color_index", color_index), ("loop_start", loop_start),
+                     ("loop_end", loop_end), ("looping", looping),
+                     ("start_marker", start_marker), ("end_marker", end_marker),
+                     ("pitch_coarse", pitch_coarse), ("pitch_fine", pitch_fine)]:
+        if val is not None:
+            params[key] = val
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_arrangement_clip_properties", params)
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting arrangement clip info")
+def get_arrangement_clip_info(ctx: Context, track_index: int,
+                                clip_index_in_arrangement: int) -> str:
+    """Get detailed info about a specific arrangement clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index_in_arrangement: Index of the clip in track.arrangement_clips
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index_in_arrangement, "clip_index_in_arrangement")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_arrangement_clip_info", {
+        "track_index": track_index,
+        "clip_index_in_arrangement": clip_index_in_arrangement,
+    })
+    return json.dumps(result)
+
+
+# --- Clip Property Tools ---
+
+@mcp.tool()
+@_tool_handler("deselecting all notes")
+def deselect_all_notes(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Deselect all notes in a MIDI clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("deselect_all_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting selected notes")
+def get_selected_notes(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Get the currently UI-selected notes in a MIDI clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_selected_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting fire button state")
+def set_fire_button_state(ctx: Context, track_index: int, clip_index: int,
+                            state: bool = True) -> str:
+    """Set the fire button state of a clip (direct trigger control).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - state: True to fire, False to release
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_fire_button_state", {
+        "track_index": track_index, "clip_index": clip_index,
+        "state": state,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("scrubbing clip")
+def clip_scrub_native(ctx: Context, track_index: int, clip_index: int,
+                        position: float) -> str:
+    """Start scrubbing a clip at the given position via Remote Script.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - position: Beat position to scrub to
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clip_scrub_native", {
+        "track_index": track_index, "clip_index": clip_index,
+        "position": position,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("stopping clip scrub")
+def clip_stop_scrub(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Stop scrubbing a clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clip_stop_scrub", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("converting beat to sample time")
+def clip_beat_to_sample_time(ctx: Context, track_index: int, clip_index: int,
+                                beat_time: float) -> str:
+    """Convert beat time to sample time for an audio clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - beat_time: Time in beats to convert
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clip_beat_to_sample_time", {
+        "track_index": track_index, "clip_index": clip_index,
+        "beat_time": beat_time,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("converting sample to beat time")
+def clip_sample_to_beat_time(ctx: Context, track_index: int, clip_index: int,
+                                sample_time: float) -> str:
+    """Convert sample time to beat time for an audio clip.
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - sample_time: Time in samples to convert
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("clip_sample_to_beat_time", {
+        "track_index": track_index, "clip_index": clip_index,
+        "sample_time": sample_time,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("duplicating clip slot")
+def duplicate_clip_slot(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Duplicate a clip slot within a track (copy to next free slot).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The source clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("duplicate_clip_slot", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+# --- Clip Slot Properties ---
+
+@mcp.tool()
+@_tool_handler("getting clip slot properties")
+def get_clip_slot_properties(ctx: Context, track_index: int, clip_index: int) -> str:
+    """Get clip slot properties (has_stop_button, is_group_slot, color, trigger state).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_slot_properties", {
+        "track_index": track_index, "clip_index": clip_index,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting clip slot properties")
+def set_clip_slot_properties(ctx: Context, track_index: int, clip_index: int,
+                               has_stop_button: Optional[bool] = None,
+                               color_index: Optional[int] = None) -> str:
+    """Set clip slot properties (has_stop_button, color).
+
+    Parameters:
+    - track_index: The track index
+    - clip_index: The clip slot index
+    - has_stop_button: Enable/disable the stop button on the clip slot
+    - color_index: Color index for the clip slot
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(clip_index, "clip_index")
+    params = {"track_index": track_index, "clip_index": clip_index}
+    if has_stop_button is not None:
+        params["has_stop_button"] = has_stop_button
+    if color_index is not None:
+        params["color_index"] = color_index
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_clip_slot_properties", params)
+    return json.dumps(result)
+
+
+# --- Song-Level Properties ---
+
+@mcp.tool()
+@_tool_handler("getting song data")
+def get_song_data(ctx: Context, key: str) -> str:
+    """Get persistent data stored in the song (survives save/load in .als file).
+
+    Parameters:
+    - key: The data key to retrieve
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_song_data", {"key": key})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting song data")
+def set_song_data(ctx: Context, key: str, value: str) -> str:
+    """Store persistent data in the song (survives save/load in .als file).
+
+    Parameters:
+    - key: The data key to store
+    - value: The string value to store
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_song_data", {"key": key, "value": value})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("ending undo step")
+def end_undo_step(ctx: Context) -> str:
+    """End the current undo step — groups preceding operations into one undo action."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("end_undo_step", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting song length")
+def get_song_length(ctx: Context) -> str:
+    """Get the total song length and last event time in beats."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_song_length", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting beat time")
+def get_beat_time(ctx: Context) -> str:
+    """Get the current playback position as structured bars:beats:sub_division:ticks."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_beat_time", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting SMPTE time")
+def get_smpte_time(ctx: Context, time_format: int = 0) -> str:
+    """Get the current playback position as SMPTE timecode.
+
+    Parameters:
+    - time_format: SMPTE format (0=Smpte24, 1=Smpte25, 2=Smpte29, 3=Smpte30, 4=Smpte30Drop)
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_smpte_time", {"time_format": time_format})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting all scales")
+def get_all_scales(ctx: Context) -> str:
+    """Get all available scale names and intervals from Ableton."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_all_scales", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("nudging tempo")
+def nudge_tempo(ctx: Context, direction: str = "up") -> str:
+    """Momentarily nudge the tempo up or down (like the nudge buttons).
+
+    Parameters:
+    - direction: "up" or "down"
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("nudge_tempo", {"direction": direction})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting appointed device")
+def get_appointed_device(ctx: Context) -> str:
+    """Get info about the currently selected/appointed device."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_appointed_device", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting count-in duration")
+def get_count_in_duration(ctx: Context) -> str:
+    """Get the count-in duration setting (0=none, 1=1bar, 2=2bars, 3=4bars)."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_count_in_duration", {})
+    return json.dumps(result)
+
+
+# --- View & UI Control ---
+
+@mcp.tool()
+@_tool_handler("setting draw mode")
+def set_draw_mode(ctx: Context, enabled: bool) -> str:
+    """Toggle draw mode in Ableton's session/arrangement view.
+
+    Parameters:
+    - enabled: True to enable draw mode, False to disable
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_draw_mode", {"enabled": enabled})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting follow song")
+def set_follow_song(ctx: Context, enabled: bool) -> str:
+    """Toggle the follow song (auto-scroll) setting.
+
+    Parameters:
+    - enabled: True to enable follow, False to disable
+    """
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_follow_song", {"enabled": enabled})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting highlighted clip slot")
+def get_highlighted_clip_slot(ctx: Context) -> str:
+    """Get the currently highlighted clip slot in session view."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_highlighted_clip_slot", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("selecting device")
+def select_device_in_view(ctx: Context, track_index: int, device_index: int,
+                            track_type: str = "track") -> str:
+    """Select a device to show in Ableton's detail view.
+
+    Parameters:
+    - track_index: The track index
+    - device_index: The device index on the track
+    - track_type: "track", "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("select_device", {
+        "track_index": track_index, "device_index": device_index,
+        "track_type": track_type,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting selected parameter")
+def get_selected_parameter(ctx: Context) -> str:
+    """Get the currently selected parameter in Ableton's detail view."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_selected_parameter", {})
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("selecting instrument")
+def select_instrument(ctx: Context, track_index: int) -> str:
+    """Select and show the first instrument device on a track.
+
+    Parameters:
+    - track_index: The track index
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("select_instrument", {"track_index": track_index})
+    return json.dumps(result)
+
+
+# --- Track-Level New Features ---
+
+@mcp.tool()
+@_tool_handler("jumping in running session clip")
+def jump_in_running_session_clip(ctx: Context, track_index: int,
+                                    amount: float) -> str:
+    """Jump forward/backward in the currently playing session clip on a track.
+
+    Parameters:
+    - track_index: The track index
+    - amount: Relative jump in beats (positive=forward, negative=backward)
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("jump_in_running_session_clip", {
+        "track_index": track_index, "amount": amount,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting track data")
+def get_track_data(ctx: Context, track_index: int, key: str) -> str:
+    """Get persistent data stored on a track (survives save/load).
+
+    Parameters:
+    - track_index: The track index
+    - key: The data key to retrieve
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_track_data", {
+        "track_index": track_index, "key": key,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting track data")
+def set_track_data(ctx: Context, track_index: int, key: str, value: str) -> str:
+    """Store persistent data on a track (survives save/load in .als file).
+
+    Parameters:
+    - track_index: The track index
+    - key: The data key to store
+    - value: The string value to store
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_track_data", {
+        "track_index": track_index, "key": key, "value": value,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("setting implicit arm")
+def set_implicit_arm(ctx: Context, track_index: int, enabled: bool) -> str:
+    """Set the implicit arm state (auto-arm when selected, Push workflow).
+
+    Parameters:
+    - track_index: The track index
+    - enabled: True to enable implicit arm
+    """
+    _validate_index(track_index, "track_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_implicit_arm", {
+        "track_index": track_index, "enabled": enabled,
+    })
+    return json.dumps(result)
+
+
+@mcp.tool()
+@_tool_handler("getting track input meters")
+def get_track_input_meters(ctx: Context, track_index: Optional[int] = None) -> str:
+    """Get input meter levels for one or all tracks.
+
+    Parameters:
+    - track_index: Track index (omit for all tracks)
+    """
+    ableton = get_ableton_connection()
+    params = {}
+    if track_index is not None:
+        _validate_index(track_index, "track_index")
+        params["track_index"] = track_index
+    result = ableton.send_command("get_track_input_meters", params)
+    return json.dumps(result)
+
+
+# --- Device On/Off ---
+
+@mcp.tool()
+@_tool_handler("setting device enabled")
+def set_device_enabled(ctx: Context, track_index: int, device_index: int,
+                         enabled: bool, track_type: str = "track") -> str:
+    """Toggle a device on or off (bypass).
+
+    Parameters:
+    - track_index: The track index
+    - device_index: The device index
+    - enabled: True to activate, False to bypass
+    - track_type: "track", "return", or "master"
+    """
+    _validate_index(track_index, "track_index")
+    _validate_index(device_index, "device_index")
+    ableton = get_ableton_connection()
+    result = ableton.send_command("set_device_enabled", {
+        "track_index": track_index, "device_index": device_index,
+        "enabled": enabled, "track_type": track_type,
+    })
+    return json.dumps(result)
 
 
 def main():

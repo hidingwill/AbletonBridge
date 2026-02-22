@@ -1161,6 +1161,272 @@ def set_session_record(song, enabled, ctrl=None):
 # --- Playing Clips ---
 
 
+# --- v4.0: Song-level features ---
+
+
+def get_song_data(song, key, ctrl=None):
+    """Get persistent data stored in the Live Set by key."""
+    try:
+        val = song.get_data(str(key), None)
+        return {"key": str(key), "value": val}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting song data: " + str(e))
+        raise
+
+
+def set_song_data(song, key, value, ctrl=None):
+    """Store persistent data in the Live Set (survives save/load)."""
+    try:
+        song.set_data(str(key), value)
+        return {"key": str(key), "value": value, "stored": True}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting song data: " + str(e))
+        raise
+
+
+def end_undo_step(song, ctrl=None):
+    """End the current undo step, grouping preceding operations into one undo action."""
+    try:
+        song.end_undo_step()
+        return {"ended": True}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error ending undo step: " + str(e))
+        raise
+
+
+def get_song_length(song, ctrl=None):
+    """Get the total song length and last event time in beats."""
+    try:
+        result = {"song_length": song.song_length}
+        try:
+            result["last_event_time"] = song.last_event_time
+        except Exception:
+            pass
+        result["tempo"] = song.tempo
+        result["current_time"] = song.current_song_time
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting song length: " + str(e))
+        raise
+
+
+def get_beat_time(song, ctrl=None):
+    """Get current song time as structured bars:beats:sub_division:ticks."""
+    try:
+        bt = song.get_current_beats_song_time()
+        result = {
+            "bars": bt.bars,
+            "beats": bt.beats,
+            "sub_division": bt.sub_division,
+            "ticks": bt.ticks,
+            "raw_beats": song.current_song_time,
+        }
+        try:
+            loop_bt = song.get_beats_loop_start()
+            result["loop_start"] = {"bars": loop_bt.bars, "beats": loop_bt.beats,
+                                     "sub_division": loop_bt.sub_division, "ticks": loop_bt.ticks}
+        except Exception:
+            pass
+        try:
+            loop_len = song.get_beats_loop_length()
+            result["loop_length"] = {"bars": loop_len.bars, "beats": loop_len.beats,
+                                      "sub_division": loop_len.sub_division, "ticks": loop_len.ticks}
+        except Exception:
+            pass
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting beat time: " + str(e))
+        raise
+
+
+def get_smpte_time(song, time_format=0, ctrl=None):
+    """Get current song time in SMPTE format.
+
+    Args:
+        time_format: 0=ms, 1=smpte_24, 2=smpte_25, 3=smpte_29, 4=smpte_30, 5=smpte_30_drop
+    """
+    try:
+        st = song.get_current_smpte_song_time(int(time_format))
+        return {
+            "hours": st.hours,
+            "minutes": st.minutes,
+            "seconds": st.seconds,
+            "frames": st.frames,
+            "format": int(time_format),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting SMPTE time: " + str(e))
+        raise
+
+
+def get_all_scales(song, ctrl=None):
+    """Get all available scale names and intervals."""
+    try:
+        from Live.Song import get_all_scales_ordered
+        scales = get_all_scales_ordered()
+        result = []
+        for scale in scales:
+            if isinstance(scale, (tuple, list)) and len(scale) >= 2:
+                result.append({"name": scale[0], "intervals": list(scale[1])})
+            else:
+                result.append(str(scale))
+        return {"scales": result, "count": len(result)}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting scales: " + str(e))
+        raise
+
+
+def nudge_tempo(song, direction, ctrl=None):
+    """Nudge the tempo up or down momentarily.
+
+    Args:
+        direction: "up" or "down"
+    """
+    try:
+        if direction == "up":
+            song.nudge_up = True
+            song.nudge_up = False
+            return {"nudged": "up", "tempo": song.tempo}
+        elif direction == "down":
+            song.nudge_down = True
+            song.nudge_down = False
+            return {"nudged": "down", "tempo": song.tempo}
+        else:
+            raise ValueError("direction must be 'up' or 'down'")
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error nudging tempo: " + str(e))
+        raise
+
+
+def get_appointed_device(song, ctrl=None):
+    """Get the currently appointed (selected) device."""
+    try:
+        dev = song.appointed_device
+        if dev is None:
+            return {"appointed_device": None}
+        return {
+            "name": dev.name,
+            "class_name": dev.class_name,
+            "is_active": dev.is_active if hasattr(dev, 'is_active') else None,
+            "parameter_count": len(dev.parameters) if hasattr(dev, 'parameters') else 0,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting appointed device: " + str(e))
+        raise
+
+
+def get_count_in_duration(song, ctrl=None):
+    """Get the count-in duration setting (0=None, 1=1 Bar, 2=2 Bars, 3=4 Bars)."""
+    try:
+        return {
+            "count_in_duration": song.count_in_duration,
+            "is_counting_in": getattr(song, "is_counting_in", False),
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting count-in duration: " + str(e))
+        raise
+
+
+# --- v4.0: View & UI Control ---
+
+
+def set_draw_mode(song, enabled, ctrl=None):
+    """Toggle envelope/note draw mode."""
+    try:
+        song.view.draw_mode = bool(enabled)
+        return {"draw_mode": song.view.draw_mode}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting draw mode: " + str(e))
+        raise
+
+
+def set_follow_song(song, enabled, ctrl=None):
+    """Toggle follow song (auto-scroll arrangement to playback position)."""
+    try:
+        song.view.follow_song = bool(enabled)
+        return {"follow_song": song.view.follow_song}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error setting follow song: " + str(e))
+        raise
+
+
+def get_highlighted_clip_slot(song, ctrl=None):
+    """Get the currently highlighted clip slot in Session View."""
+    try:
+        cs = song.view.highlighted_clip_slot
+        if cs is None:
+            return {"highlighted_clip_slot": None}
+        result = {"has_clip": cs.has_clip}
+        if cs.has_clip and cs.clip:
+            result["clip_name"] = cs.clip.name
+        return result
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting highlighted clip slot: " + str(e))
+        raise
+
+
+def select_device(song, track_index, device_index, track_type="track", ctrl=None):
+    """Select a device in the detail view."""
+    try:
+        if track_type == "return":
+            track = song.return_tracks[int(track_index)]
+        elif track_type == "master":
+            track = song.master_track
+        else:
+            track = song.tracks[int(track_index)]
+        device = track.devices[int(device_index)]
+        song.view.select_device(device)
+        return {"selected": True, "device_name": device.name, "track_name": track.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error selecting device: " + str(e))
+        raise
+
+
+def get_selected_parameter(song, ctrl=None):
+    """Get the currently selected device parameter."""
+    try:
+        param = song.view.selected_parameter
+        if param is None:
+            return {"selected_parameter": None}
+        return {
+            "name": param.name,
+            "value": param.value,
+            "min": param.min,
+            "max": param.max,
+            "is_quantized": param.is_quantized,
+        }
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error getting selected parameter: " + str(e))
+        raise
+
+
+def select_instrument(song, track_index, ctrl=None):
+    """Select the instrument on a track (if it has one)."""
+    try:
+        track = song.tracks[int(track_index)]
+        found = track.view.select_instrument()
+        return {"selected": found, "track_name": track.name}
+    except Exception as e:
+        if ctrl:
+            ctrl.log_message("Error selecting instrument: " + str(e))
+        raise
+
+
 def get_playing_clips(song, ctrl=None):
     """Get all currently playing/triggered clips across all tracks."""
     try:
