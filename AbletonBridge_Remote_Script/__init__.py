@@ -265,6 +265,9 @@ _MODIFYING_HANDLERS = {
         song, p.get("track_index", 0), p.get("device_index", 0),
         p.get("input_type"), p.get("input_channel"),
         track_type=p.get("track_type", "track"), ctrl=ctrl),
+    "set_sidechain_by_name": lambda song, p, ctrl: handlers.devices.set_sidechain_by_name(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        p.get("source_track_name", ""), track_type=p.get("track_type", "track"), ctrl=ctrl),
     "set_eq8_properties": lambda song, p, ctrl: handlers.devices.set_eq8_properties(
         song, p.get("track_index", 0), p.get("device_index", 0),
         p.get("edit_mode"), p.get("global_mode"),
@@ -338,6 +341,9 @@ _MODIFYING_HANDLERS = {
     "load_instrument_or_effect": lambda song, p, ctrl: handlers.browser.load_instrument_or_effect(song, p.get("track_index", 0), p.get("uri", ""), ctrl),
     "load_sample": lambda song, p, ctrl: handlers.browser.load_sample(song, p.get("track_index", 0), p.get("sample_uri", ""), ctrl),
     "preview_browser_item": lambda song, p, ctrl: handlers.browser.preview_browser_item(song, p.get("uri"), p.get("action", "preview"), ctrl),
+    "load_device_preset": lambda song, p, ctrl: handlers.browser.load_device_preset(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        p.get("preset_uri", ""), track_type=p.get("track_type", "track"), ctrl=ctrl),
 
     # --- MIDI ---
     "add_notes_extended": lambda song, p, ctrl: handlers.midi.add_notes_extended(song, p.get("track_index", 0), p.get("clip_index", 0), p.get("notes", []), ctrl),
@@ -488,6 +494,9 @@ _READONLY_HANDLERS = {
     "get_chain_selector": lambda song, p, ctrl: handlers.devices.get_chain_selector(
         song, p.get("track_index", 0), p.get("device_index", 0),
         track_type=p.get("track_type", "track"), ctrl=ctrl),
+    "get_device_info": lambda song, p, ctrl: handlers.devices.get_device_info(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        track_type=p.get("track_type", "track"), ctrl=ctrl),
 
     # --- Browser ---
     "get_browser_item": lambda song, p, ctrl: handlers.browser.get_browser_item(song, p.get("uri"), p.get("path"), ctrl),
@@ -496,6 +505,9 @@ _READONLY_HANDLERS = {
     "search_browser": lambda song, p, ctrl: handlers.browser.search_browser(song, p.get("query", ""), p.get("category", "all"), ctrl),
     "get_user_library": lambda song, p, ctrl: handlers.browser.get_user_library(song, ctrl),
     "get_user_folders": lambda song, p, ctrl: handlers.browser.get_user_folders(song, ctrl),
+    "get_device_presets": lambda song, p, ctrl: handlers.browser.get_device_presets(
+        song, p.get("track_index", 0), p.get("device_index", 0),
+        track_type=p.get("track_type", "track"), ctrl=ctrl),
 
     # --- MIDI ---
     "get_clip_notes": lambda song, p, ctrl: handlers.midi.get_clip_notes(

@@ -655,6 +655,124 @@ def get_user_folders(song, ctrl=None):
         raise
 
 
+def get_device_presets(song, track_index, device_index, track_type="track", ctrl=None):
+    """Get available presets for a device by navigating the browser."""
+    from ._helpers import get_track
+    track = get_track(song, track_index, track_type)
+
+    if device_index < 0 or device_index >= len(track.devices):
+        raise IndexError("Device index {0} out of range".format(device_index))
+
+    device = track.devices[device_index]
+    class_name = device.class_name if hasattr(device, 'class_name') else ""
+    device_name = device.name if hasattr(device, 'name') else ""
+
+    # Note: VST/AU internal presets are NOT accessible through the Live API
+    # We can only browse Ableton's preset library for native devices
+    presets = []
+
+    browser = None
+    if ctrl is not None:
+        try:
+            app = ctrl.application()
+            if app:
+                browser = app.browser
+        except Exception:
+            pass
+
+    if browser is None:
+        return {"device_name": device_name, "presets": [], "note": "Browser not available"}
+
+    # For native devices, try to find presets in the browser
+    # Navigate through instruments or audio_effects categories
+    try:
+        # Search through browser items matching the device class name
+        categories_to_search = []
+        if hasattr(browser, 'instruments'):
+            categories_to_search.append(browser.instruments)
+        if hasattr(browser, 'audio_effects'):
+            categories_to_search.append(browser.audio_effects)
+        if hasattr(browser, 'midi_effects'):
+            categories_to_search.append(browser.midi_effects)
+
+        for category in categories_to_search:
+            if not hasattr(category, 'children'):
+                continue
+            for child in category.children:
+                child_name = child.name if hasattr(child, 'name') else ""
+                if child_name.lower() == class_name.lower() or child_name.lower() == device_name.lower():
+                    # Found the device category - list its presets
+                    if hasattr(child, 'children'):
+                        for preset in child.children:
+                            preset_name = preset.name if hasattr(preset, 'name') else ""
+                            preset_uri = preset.uri if hasattr(preset, 'uri') else ""
+                            if preset_name:
+                                presets.append({
+                                    "name": preset_name,
+                                    "uri": preset_uri,
+                                    "is_folder": bool(preset.is_folder) if hasattr(preset, 'is_folder') else False,
+                                })
+                    break
+    except Exception as e:
+        return {"device_name": device_name, "presets": [], "error": str(e)}
+
+    return {
+        "device_name": device_name,
+        "class_name": class_name,
+        "preset_count": len(presets),
+        "presets": presets,
+        "note": "VST/AU internal presets are not accessible via the Live API" if not presets else "",
+    }
+
+
+def load_device_preset(song, track_index, device_index, preset_uri, track_type="track", ctrl=None):
+    """Load a preset onto a device using hot-swap."""
+    from ._helpers import get_track
+    track = get_track(song, track_index, track_type)
+
+    if device_index < 0 or device_index >= len(track.devices):
+        raise IndexError("Device index {0} out of range".format(device_index))
+
+    device = track.devices[device_index]
+
+    browser = None
+    if ctrl is not None:
+        try:
+            app = ctrl.application()
+            if app:
+                browser = app.browser
+        except Exception:
+            pass
+
+    if browser is None:
+        raise ValueError("Browser not available")
+
+    if not preset_uri:
+        raise ValueError("preset_uri is required")
+
+    # Use the browser to load the preset via hot-swap
+    try:
+        # Find the browser item by URI
+        item = find_browser_item_by_uri(browser, preset_uri, ctrl=ctrl)
+        if item is None:
+            raise ValueError("Could not find preset with URI: {0}".format(preset_uri))
+
+        # Hot-swap the preset onto the device
+        if hasattr(browser, 'load_item'):
+            browser.load_item(item)
+        else:
+            raise ValueError("Browser load_item not available")
+
+    except AttributeError:
+        raise ValueError("Preset loading not supported in this Ableton version")
+
+    return {
+        "device_name": device.name if hasattr(device, 'name') else "",
+        "preset_uri": preset_uri,
+        "loaded": True,
+    }
+
+
 def preview_browser_item(song, uri=None, action="preview", ctrl=None):
     """Preview (audition) a browser item, or stop the current preview.
 

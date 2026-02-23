@@ -4,6 +4,139 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v3.2.0 — 2026-02-23
+
+### Architecture Overhaul, Performance, Compound Tools, Full-Stack Features & MCP Protocol Enrichment
+
+Complete architectural rewrite: modularized 11,839-line monolithic server.py into 20+ focused modules, added tiered command delays, async tool handlers, compound workflow tools, full-stack feature additions, test suite, and MCP protocol enrichment (Resources + Prompts).
+
+#### Phase 0: Critical Fixes (3 fixes)
+- **fix**: `_resolve_device_uri` 60-second hang — replaced 120×0.5s polling loop with `threading.Event.wait(timeout=5.0)` for bounded cache readiness check
+- **new**: `get_server_capabilities` tool — returns server version, connection statuses (Ableton TCP, M4L UDP, M4L sockets), browser cache readiness/item count, and dynamic tool count
+- **fix**: `_get_server_version()` fallback — changed hardcoded `"1.9.0"` to use `MCP_Server.__version__`; fixed hardcoded `tool_count: 131` to dynamic count via `mcp._tool_manager._tools`
+
+#### Phase 1: Performance — Latency Reduction (3 improvements)
+- **perf**: Tiered command delays — replaced blanket 200ms delay for all modifying commands with 3 tiers:
+  - Tier 0 (no delay): 54 instant property setters (set_tempo, set_track_volume, etc.)
+  - Tier 1 (50ms post-delay): 29 note/clip/automation operations (add_notes_to_clip, etc.)
+  - Tier 2 (100ms pre+post): 30 structural/loading changes (create_midi_track, load_instrument_or_effect, etc.)
+  - Net effect: 50-70% latency reduction for property setters, no stability regression for structural commands
+- **perf**: Event-driven browser cache warmup — replaced `time.sleep(5)` + polling with `ableton_connected_event.wait(timeout=30.0)` for faster startup
+- **perf**: Async tool handlers — all 334 tools now run via `asyncio.to_thread()` in the `_tool_handler` decorator, preventing sync TCP/UDP I/O from blocking the FastMCP async event loop
+
+#### Phase 2: Architecture — Modularization (server.py: 11,839 → ~300 lines)
+Decomposed the monolithic server.py into 20+ focused modules with strict import DAG (no circular dependencies):
+
+**New foundation modules:**
+- `MCP_Server/state.py` — centralized global mutable state (connections, stores, caches, locks, events, config)
+- `MCP_Server/constants.py` — command tiers, browser categories, cache configuration
+- `MCP_Server/validation.py` — input validation helpers with size limits
+
+**New packages:**
+- `MCP_Server/connections/ableton.py` — `AbletonConnection` class with tiered `send_command()`, `get_ableton_connection()`, idempotency guards
+- `MCP_Server/connections/m4l.py` — `M4LConnection` class with OSC, chunked responses, `send_command_with_retry()` (3 attempts, exponential backoff)
+- `MCP_Server/cache/browser.py` — browser cache population, URI resolution, gzip disk persistence
+- `MCP_Server/dashboard/html.py` — dashboard HTML/CSS/JS constant
+- `MCP_Server/dashboard/server.py` — Starlette dashboard server, status JSON, log handler
+
+**14 tool modules** (each exports `register_tools(mcp)`):
+- `tools/session.py` (55 tools) — transport, tempo, recording, playback, views
+- `tools/tracks.py` (28 tools) — track CRUD, routing, monitoring, group operations
+- `tools/clips.py` (54 tools) — clip CRUD, notes, loop, launch, follow actions
+- `tools/devices.py` (44 tools) — device params, macros, drum pads, racks
+- `tools/browser.py` (12 tools) — browser search, load instrument, presets
+- `tools/mixer.py` (22 tools) — volume, pan, sends, crossfader, mute/solo, unified set_mixer
+- `tools/automation.py` (12 tools) — clip/track automation, envelopes
+- `tools/arrangement.py` (12 tools) — arrangement clips, time editing
+- `tools/creative.py` (17 tools) — generation: chords, drums, arpeggios, bass, euclidean
+- `tools/m4l_tools.py` (40 tools) — M4L bridge tools (hidden params, chains, etc.)
+- `tools/snapshots.py` (18 tools) — snapshot/macro/param_map stores
+- `tools/audio.py` (3 tools) — audio analysis, input meters
+- `tools/grid.py` (2 tools) — grid notation input/output
+- `tools/workflows.py` (10 tools) — compound workflow tools
+
+**Slim orchestrator:**
+- `server.py` — ~300 lines: singleton lock, M4L auto-connect, browser warmup, lifespan, MCP instance, tool registration, instrumentation
+
+**Package config:**
+- `pyproject.toml` — version bumped to 3.2.0, auto-discovered packages via `[tool.setuptools.packages.find]`, added `[dev]` optional deps (pytest, pytest-asyncio)
+- `MCP_Server/__init__.py` — version bumped to 3.2.0, imports from `connections.ableton`
+
+#### Phase 3: Compound Tools & Consolidation (12 new tools)
+**Compound workflow tools** (tools/workflows.py — 10 tools):
+- `create_instrument_track` — create MIDI track + load instrument + name + color in one call (saves 3-4 round trips)
+- `create_clip_with_notes` — create clip + add notes + set name in one call
+- `setup_send_return` — create return + load effect + name + set send levels on source tracks
+- `get_full_session_state` — get session + tracks + returns + scenes in one call (saves 3 round trips)
+- `apply_effect_chain` — load multiple effects onto a track sequentially
+- `batch_set_mixer` — set volume/pan/mute/solo for multiple tracks at once
+- `save_effect_chain` — save track's device chain as reusable template
+- `load_effect_chain` — load saved effect chain template onto a track
+- `list_effect_chain_templates` — list all saved effect chain templates
+
+**Unified mixer tool** (tools/mixer.py — 1 new tool):
+- `set_mixer` — unified tool accepting track_type ("track"/"return"/"master") + optional volume/pan/mute/solo; replaces need for separate set_track_volume, set_return_track_volume, set_master_volume calls
+
+**Grid notation tools** (tools/grid.py — already existed, now in own module):
+- `clip_to_grid` / `grid_to_clip` — ASCII drum/melodic pattern I/O
+
+#### Phase 4: Reliability & Testing (63 tests + 4 safety mechanisms)
+**Test suite** (tests/ — 7 files, 63 tests, all passing):
+- `tests/conftest.py` — mock_ableton, mock_m4l, patch_ableton, patch_m4l, reset_state fixtures
+- `tests/test_validation.py` (37 tests) — all _validate_* helpers with boundary cases
+- `tests/test_grid_notation.py` (7 tests) — drum/melodic parse + roundtrip
+- `tests/test_constants.py` (4 tests) — tier disjointness, union, spot-checks
+- `tests/test_state.py` (5 tests) — thread-safety, events, stores
+- `tests/test_tool_handler.py` (11 tests) — async decorator, error handling, success/error helpers
+
+**Safety mechanisms:**
+- M4L command retry — `send_command_with_retry()` with 3 attempts, 0.5s/1.0s/1.5s exponential backoff for "busy" errors
+- Standardized responses — `tool_success()` / `tool_error()` JSON helpers in `_base.py`
+- Input size limits — MAX_NOTES=10,000, MAX_AUTOMATION_POINTS=500, MAX_BATCH_PARAMS=200, MAX_TRACKS_PER_BATCH=50
+- Idempotency guards — `NON_IDEMPOTENT_COMMANDS` frozenset disables retry for create_*/delete_*/duplicate_* operations
+
+#### Phase 5: Full-Stack Feature Gaps (4 new tools + Remote Script handlers + docs)
+**New MCP tools + Remote Script handlers:**
+- `get_device_info` — returns device class, type classification (native/vst/vst3/au/m4l), can_have_chains, can_have_drum_pads, parameter_count [RS: new readonly handler in `handlers/devices.py`]
+- `get_device_presets` — browse Ableton native presets for a device [RS: new readonly handler in `handlers/browser.py`]
+- `load_device_preset` — hot-swap preset onto a device via URI [RS: new modifying handler in `handlers/browser.py`]
+- `set_sidechain_by_name` — resolve track name to sidechain routing automatically [RS: new modifying handler in `handlers/devices.py`]
+
+**Documentation:**
+- `docs/PLUGIN_COMPATIBILITY.md` — comprehensive guide covering native/M4L/VST3/VST2/AU support levels, Configure mode workflow, known-good patterns for popular plugins (Serum, Fabfilter, Kontakt, Omnisphere), troubleshooting, and feature comparison table
+
+#### Phase 6: MCP Protocol Enrichment (3 resources + 4 prompts + version check)
+**MCP Resources** (server.py):
+- `ableton://session` — live session info (tempo, tracks, transport state)
+- `ableton://tracks` — all track information (devices, clips, routing)
+- `ableton://capabilities` — server version, connection statuses, M4L bridge version, cache state
+
+**MCP Prompts** (MCP_Server/prompts.py):
+- `create_beat(genre, bpm, bars)` — guided drum pattern creation workflow
+- `mix_track(track_name)` — structured 6-step mixing workflow (assess → gain staging → EQ → dynamics → spatial → review)
+- `sound_design(instrument)` — parameter exploration guide for sound design
+- `arrange_section(bars, genre)` — arrangement section creation workflow
+
+**Version compatibility:**
+- M4L bridge version check — after successful ping, compares server/bridge major.minor versions and logs warning on mismatch
+- Bridge version exposed in `state.m4l_bridge_version` and `ableton://capabilities` resource
+
+#### Duplicate Tool Resolution (8 duplicates fixed)
+- Removed duplicate `select_device_in_view`, `get_selected_parameter`, `select_instrument` from `tools/tracks.py` (canonical home: `tools/devices.py`)
+- Removed duplicate `get_appointed_device` from `tools/session.py` (canonical home: `tools/devices.py`)
+- Removed duplicate `set_macro_value` from `tools/devices.py` (canonical home: `tools/snapshots.py`)
+- Removed duplicate `get_audio_clip_info`, `analyze_audio_clip` from `tools/clips.py` (canonical home: `tools/audio.py`)
+- Removed duplicate `get_track_meters` from `tools/audio.py` (canonical home: `tools/tracks.py`)
+
+### Remote Script Changes
+- `AbletonBridge_Remote_Script/handlers/devices.py` — added `get_device_info()` and `set_sidechain_by_name()` handlers
+- `AbletonBridge_Remote_Script/handlers/browser.py` — added `get_device_presets()` and `load_device_preset()` handlers
+- `AbletonBridge_Remote_Script/__init__.py` — added 4 new dispatch entries (2 readonly + 2 modifying)
+
+### Tool count: **334** core + **19 optional** (ElevenLabs) = **353 total**
+
+---
+
 ## v3.1.0 — 2026-02-22
 
 ### Bug Fixes, Device Knowledge Base, Creative Tools Enhancement

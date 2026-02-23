@@ -1578,3 +1578,139 @@ def move_device(song, track_index, device_index, dest_track_index, dest_position
         if ctrl:
             ctrl.log_message("Error moving device: " + str(e))
         raise
+
+
+# --- Device Info ---
+
+
+def get_device_info(song, track_index, device_index, track_type="track", ctrl=None):
+    """Get detailed info about a specific device including type classification."""
+    from ._helpers import get_track
+    track = get_track(song, track_index, track_type)
+
+    if device_index < 0 or device_index >= len(track.devices):
+        raise IndexError("Device index {0} out of range (track has {1} devices)".format(
+            device_index, len(track.devices)))
+
+    device = track.devices[device_index]
+
+    # Determine device type
+    class_name = device.class_name if hasattr(device, 'class_name') else ""
+    device_type = "native"
+
+    # Check for VST/AU types based on class_name patterns
+    if hasattr(device, 'type'):
+        try:
+            type_val = device.type
+            # Live API DeviceType enum: 0=undefined, 1=instrument, 2=audio_effect, 3=midi_effect
+            pass  # type_val is the general device type (instrument/effect), not plugin format
+        except Exception:
+            pass
+
+    # Plugin format detection via class_name
+    if "Vst3" in class_name or "VST3" in class_name:
+        device_type = "vst3"
+    elif "Vst" in class_name or "VST" in class_name or "AuPlugin" in class_name:
+        device_type = "vst"
+    elif "Au" in class_name and "Audio" not in class_name:
+        device_type = "au"
+    elif class_name.startswith("MxDevice") or "Max" in class_name:
+        device_type = "m4l"
+
+    result = {
+        "name": device.name if hasattr(device, 'name') else "",
+        "class_name": class_name,
+        "class_display_name": device.class_display_name if hasattr(device, 'class_display_name') else "",
+        "device_type": device_type,
+        "is_active": bool(device.is_active) if hasattr(device, 'is_active') else True,
+        "can_have_chains": bool(device.can_have_chains) if hasattr(device, 'can_have_chains') else False,
+        "can_have_drum_pads": bool(device.can_have_drum_pads) if hasattr(device, 'can_have_drum_pads') else False,
+        "parameter_count": len(list(device.parameters)) if hasattr(device, 'parameters') else 0,
+    }
+
+    # Add chain info if applicable
+    if result["can_have_chains"] and hasattr(device, 'chains'):
+        result["chain_count"] = len(list(device.chains))
+
+    # Add drum pad info if applicable
+    if result["can_have_drum_pads"] and hasattr(device, 'drum_pads'):
+        result["drum_pad_count"] = len(list(device.drum_pads))
+
+    return result
+
+
+# --- Sidechain by Name ---
+
+
+def set_sidechain_by_name(song, track_index, device_index, source_track_name, track_type="track", ctrl=None):
+    """Set sidechain input to a specific track by name."""
+    from ._helpers import get_track
+    track = get_track(song, track_index, track_type)
+
+    if device_index < 0 or device_index >= len(track.devices):
+        raise IndexError("Device index {0} out of range".format(device_index))
+
+    device = track.devices[device_index]
+
+    # Find the source track by name
+    source_track = None
+    source_track_idx = -1
+    for i, t in enumerate(song.tracks):
+        if t.name.lower() == source_track_name.lower():
+            source_track = t
+            source_track_idx = i
+            break
+
+    if source_track is None:
+        # Also check return tracks
+        for i, t in enumerate(song.return_tracks):
+            if t.name.lower() == source_track_name.lower():
+                source_track = t
+                source_track_idx = i
+                break
+
+    if source_track is None:
+        raise ValueError("Source track '{0}' not found".format(source_track_name))
+
+    # Navigate to the compressor's sidechain
+    # The sidechain routing is done through input_routing_type on the sidechain
+    if not hasattr(device, 'parameters'):
+        raise ValueError("Device has no parameters")
+
+    # For native Ableton compressors, we need to set the sidechain input routing
+    # This is done through the available_input_routing_types
+    sidechain_set = False
+
+    # Try to find and set sidechain via input routing types
+    try:
+        if hasattr(device, 'available_input_routing_types'):
+            routing_types = list(device.available_input_routing_types)
+            for rt in routing_types:
+                rt_name = rt.display_name if hasattr(rt, 'display_name') else str(rt)
+                if source_track_name.lower() in rt_name.lower():
+                    device.input_routing_type = rt
+                    sidechain_set = True
+                    break
+    except Exception:
+        pass
+
+    if not sidechain_set:
+        # Fallback: try to use set_compressor_sidechain with resolved index
+        # Find the track in available input types
+        try:
+            routing_types = list(device.available_input_routing_types) if hasattr(device, 'available_input_routing_types') else []
+            available = [{"index": i, "name": rt.display_name if hasattr(rt, 'display_name') else str(rt)} for i, rt in enumerate(routing_types)]
+            return {
+                "error": "Could not automatically set sidechain to '{0}'".format(source_track_name),
+                "available_inputs": available,
+                "hint": "Use set_compressor_sidechain with the correct input_type index from the list above",
+            }
+        except Exception as e:
+            raise ValueError("Could not resolve sidechain routing: {0}".format(e))
+
+    return {
+        "device": device.name if hasattr(device, 'name') else "",
+        "sidechain_source": source_track_name,
+        "source_track_index": source_track_idx,
+        "success": True,
+    }

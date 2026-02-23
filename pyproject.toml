@@ -1,6 +1,6 @@
 [project]
 name = "ableton-bridge"
-version = "3.0.0"
+version = "3.2.0"
 description = "AbletonBridge — Ableton Live integration through the Model Context Protocol"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,10 @@ elevenlabs = [
     "pydantic>=2.0",
     "rapidfuzz",
 ]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
 
 [project.scripts]
 ableton-bridge = "MCP_Server.server:main"
@@ -34,8 +38,8 @@ elevenlabs-mcp = "elevenlabs_mcp.server:main"
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["MCP_Server", "elevenlabs_mcp"]
+[tool.setuptools.packages.find]
+include = ["MCP_Server*", "elevenlabs_mcp"]
 
 [tool.setuptools.package-data]
 MCP_Server = ["browser_cache_seed.json"]
