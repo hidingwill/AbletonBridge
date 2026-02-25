@@ -12,7 +12,9 @@ class TestToolHandler:
             return "success"
 
         result = await my_tool()
-        assert result == "success"
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert parsed["message"] == "success"
 
     @pytest.mark.asyncio
     async def test_value_error_caught(self):
@@ -21,8 +23,10 @@ class TestToolHandler:
             raise ValueError("bad input")
 
         result = await my_tool()
-        assert "Invalid input" in result
-        assert "bad input" in result
+        parsed = json.loads(result)
+        assert parsed["status"] == "error"
+        assert "Invalid input" in parsed["message"]
+        assert "bad input" in parsed["message"]
 
     @pytest.mark.asyncio
     async def test_connection_error_caught(self):
@@ -31,7 +35,9 @@ class TestToolHandler:
             raise ConnectionError("no connection")
 
         result = await my_tool()
-        assert "M4L bridge not available" in result
+        parsed = json.loads(result)
+        assert parsed["status"] == "error"
+        assert "M4L bridge not available" in parsed["message"]
 
     @pytest.mark.asyncio
     async def test_generic_exception_caught(self):
@@ -40,7 +46,9 @@ class TestToolHandler:
             raise RuntimeError("something broke")
 
         result = await my_tool()
-        assert "Error doing stuff" in result
+        parsed = json.loads(result)
+        assert parsed["status"] == "error"
+        assert "Error doing stuff" in parsed["message"]
 
     @pytest.mark.asyncio
     async def test_with_args(self):
@@ -49,7 +57,21 @@ class TestToolHandler:
             return f"{a}+{b}"
 
         result = await my_tool(1, 2)
-        assert result == "1+2"
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert parsed["message"] == "1+2"
+
+    @pytest.mark.asyncio
+    async def test_json_passthrough(self):
+        """Responses already in JSON format should pass through unwrapped."""
+        @_tool_handler("test")
+        def my_tool():
+            return json.dumps({"tracks": [1, 2, 3]})
+
+        result = await my_tool()
+        parsed = json.loads(result)
+        assert parsed["tracks"] == [1, 2, 3]
+        assert "status" not in parsed
 
 
 class TestToolSuccess:

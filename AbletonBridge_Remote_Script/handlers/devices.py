@@ -35,6 +35,10 @@ def _normalize_display(s):
 
 
 MAX_BRUTEFORCE_STEPS = 10000
+_DISPLAY_VALUE_CACHE_MAX = 500
+
+# Cache: (param_name, param_min, param_max) -> {normalized_display: raw_value}
+_display_value_cache = {}
 
 
 def _resolve_display_value_bruteforce(param, display_string, ctrl=None):
@@ -44,6 +48,8 @@ def _resolve_display_value_bruteforce(param, display_string, ctrl=None):
     Works for params like LFO Rate (0-21) where each integer = a note value.
     Uses aggressive normalization (strip all whitespace) for robust matching.
     Capped at MAX_BRUTEFORCE_STEPS iterations to prevent UI stalls.
+
+    Results are cached per parameter type so subsequent lookups are O(1).
     """
     target_norm = _normalize_display(display_string)
 
@@ -58,6 +64,15 @@ def _resolve_display_value_bruteforce(param, display_string, ctrl=None):
             "value_display resolution is only supported for integer-step params. "
             "'{0}' has a continuous range ({1}-{2}); use a numeric value instead.".format(
                 param.name, pmin, pmax))
+
+    # Check cache first
+    cache_key = (param.name, pmin, pmax)
+    if cache_key in _display_value_cache:
+        cached = _display_value_cache[cache_key]
+        if target_norm in cached:
+            if ctrl:
+                ctrl.log_message("Cache hit for '{0}' on '{1}'".format(display_string, param.name))
+            return cached[target_norm]
 
     lo = int(pmin)
     hi = int(pmax)
@@ -75,20 +90,37 @@ def _resolve_display_value_bruteforce(param, display_string, ctrl=None):
             ctrl.log_message("  Capped search to {0} steps (original span: {1})".format(
                 MAX_BRUTEFORCE_STEPS, span))
 
+    # Build full mapping for this param type and cache it
+    mapping = {}
+    matched_value = None
     for v in range(lo, hi + 1):
         try:
             disp = param.str_for_value(float(v))
             if disp is None:
                 continue
             disp_norm = _normalize_display(disp)
-            if disp_norm == target_norm:
+            mapping[disp_norm] = float(v)
+            if disp_norm == target_norm and matched_value is None:
+                matched_value = float(v)
                 if ctrl:
                     ctrl.log_message("  MATCH at v={0}".format(v))
-                return float(v)
         except Exception as e:
             if ctrl:
                 ctrl.log_message("  v={0} -> ERROR: {1}".format(v, e))
             continue
+
+    # Cache the mapping (FIFO eviction if over limit)
+    if len(_display_value_cache) >= _DISPLAY_VALUE_CACHE_MAX:
+        # Remove oldest entry
+        try:
+            oldest_key = next(iter(_display_value_cache))
+            del _display_value_cache[oldest_key]
+        except StopIteration:
+            pass
+    _display_value_cache[cache_key] = mapping
+
+    if matched_value is not None:
+        return matched_value
 
     msg = "'{0}' not matched for '{1}' (range {2}-{3})".format(
         display_string, param.name, param.min, param.max)

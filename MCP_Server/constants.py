@@ -71,6 +71,18 @@ TIER_2_COMMANDS: frozenset = frozenset([
 # Combined set of all modifying commands (union of all tiers)
 MODIFYING_COMMANDS: frozenset = TIER_0_COMMANDS | TIER_1_COMMANDS | TIER_2_COMMANDS
 
+# Per-command timeout overrides for legitimately slow operations.
+# Used by send_command() when the caller doesn't specify a timeout.
+SLOW_COMMAND_TIMEOUTS: Dict[str, float] = {
+    "load_instrument_or_effect": 30.0,
+    "load_sample": 30.0,
+    "load_drum_kit": 30.0,
+    "freeze_track": 60.0,
+    "unfreeze_track": 30.0,
+    "audio_to_midi": 30.0,
+    "get_browser_items_at_path": 20.0,
+}
+
 # ---------------------------------------------------------------------------
 # Browser categories
 # ---------------------------------------------------------------------------
@@ -132,3 +144,4 @@ BROWSER_DISK_CACHE_MAX_AGE: float = 604800.0  # 7 days -- disk cache ignored if 
 BROWSER_DISK_CACHE_DIR: str = os.path.join(os.path.expanduser("~"), ".ableton-bridge")
 BROWSER_DISK_CACHE_PATH: str = os.path.join(BROWSER_DISK_CACHE_DIR, "browser_cache.json.gz")
 BROWSER_DISK_CACHE_PATH_LEGACY: str = os.path.join(BROWSER_DISK_CACHE_DIR, "browser_cache.json")
+CHAIN_TEMPLATES_PATH: str = os.path.join(BROWSER_DISK_CACHE_DIR, "chain_templates.json")

@@ -565,13 +565,26 @@ class M4LConnection:
                 data, _ = self.recv_sock.recvfrom(65535)
                 parsed = self._parse_m4l_response(data)
                 if "_c" in parsed and "_t" in parsed:
-                    chunks[parsed["_c"]] = parsed["_d"]
+                    idx = parsed["_c"]
+                    if idx in chunks:
+                        logger.warning("M4L chunk reassembly: duplicate chunk %d, ignoring", idx)
+                        continue
+                    chunks[idx] = parsed["_d"]
+                    if len(chunks) % 5 == 0:
+                        logger.info("M4L chunk reassembly: %d/%d", len(chunks), total)
                 else:
                     # Got a non-chunk response (maybe from another command?)
                     logger.warning("M4L chunk reassembly: got non-chunk packet, ignoring")
             except socket.timeout:
-                logger.error("M4L chunk reassembly: timeout after %d/%d chunks", len(chunks), total)
-                raise Exception(f"Timeout receiving chunked M4L response ({len(chunks)}/{total} chunks received)")
+                missing = sorted(set(range(total)) - set(chunks.keys()))
+                logger.error(
+                    "M4L chunk reassembly: timeout after %d/%d chunks, missing: %s",
+                    len(chunks), total, missing[:10]
+                )
+                raise Exception(
+                    f"Timeout receiving chunked M4L response ({len(chunks)}/{total} chunks, "
+                    f"missing: {missing[:10]})"
+                )
 
         # Reassemble: decode each piece and concatenate
         json_parts = []

@@ -218,6 +218,13 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
             target=_browser_cache_warmup, daemon=True, name="browser-cache-warmup"
         ).start()
 
+        # Load saved effect chain templates from disk
+        try:
+            from MCP_Server.tools.workflows import load_chain_templates_from_disk
+            load_chain_templates_from_disk()
+        except Exception as e:
+            logger.warning("Could not load chain templates: %s", e)
+
         yield {}
 
     finally:

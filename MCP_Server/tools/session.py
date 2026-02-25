@@ -147,7 +147,8 @@ def register_tools(mcp):
     @_tool_handler("setting song time")
     def set_song_time(ctx: Context, time: float) -> str:
         """
-        Set the playback position (arrangement playhead).
+        Set the playback position (arrangement playhead). Moves the playhead
+        to the specified beat position.
 
         Parameters:
         - time: The position in beats to jump to (0.0 = start of song)
@@ -158,15 +159,24 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("setting song loop")
-    def set_song_loop(ctx: Context, enabled: bool = None, start: float = None, length: float = None) -> str:
+    def set_song_loop(ctx: Context, enabled: bool = None, start: float = None, length: float = None, end: float = None) -> str:
         """
         Control the arrangement loop bracket.
 
         Parameters:
         - enabled: True to enable looping, False to disable (optional)
         - start: Loop start position in beats (optional)
-        - length: Loop length in beats (optional)
+        - length: Loop length in beats (optional, mutually exclusive with end)
+        - end: Loop end position in beats (optional, mutually exclusive with length). Computes length = end - start.
         """
+        if length is not None and end is not None:
+            raise ValueError("Provide either 'length' or 'end', not both")
+        if end is not None:
+            if start is None:
+                raise ValueError("'start' is required when using 'end'")
+            if end <= start:
+                raise ValueError("'end' must be greater than 'start'")
+            length = end - start
         params = {}
         if enabled is not None:
             params["enabled"] = enabled
@@ -177,10 +187,10 @@ def register_tools(mcp):
         ableton = get_ableton_connection()
         result = ableton.send_command("set_song_loop", params)
         # Use the values we sent, with result as fallback
-        state = "enabled" if (enabled if enabled is not None else result.get("loop_enabled")) else "disabled"
+        loop_state = "enabled" if (enabled if enabled is not None else result.get("loop_enabled")) else "disabled"
         s = start if start is not None else result.get('loop_start', 0)
         l = length if length is not None else result.get('loop_length', 0)
-        return f"Loop {state}: start={s}, length={l} beats"
+        return f"Loop {loop_state}: start={s}, length={l} beats"
 
     @mcp.tool()
     @_tool_handler("setting metronome")
@@ -221,54 +231,6 @@ def register_tools(mcp):
         ableton = get_ableton_connection()
         result = ableton.send_command("stop_arrangement_recording")
         return "Arrangement recording stopped"
-
-    @mcp.tool()
-    @_tool_handler("setting loop start")
-    def set_loop_start(ctx: Context, position: float) -> str:
-        """Set the loop start position in beats.
-
-        Parameters:
-        - position: The loop start position in beats
-        """
-        ableton = get_ableton_connection()
-        result = ableton.send_command("set_loop_start", {"position": position})
-        return f"Loop start set to {result.get('loop_start', position)} beats"
-
-    @mcp.tool()
-    @_tool_handler("setting loop end")
-    def set_loop_end(ctx: Context, position: float) -> str:
-        """Set the loop end position in beats.
-
-        Parameters:
-        - position: The loop end position in beats
-        """
-        ableton = get_ableton_connection()
-        result = ableton.send_command("set_loop_end", {"position": position})
-        return f"Loop end set to {result.get('loop_end', position)} beats"
-
-    @mcp.tool()
-    @_tool_handler("setting loop length")
-    def set_loop_length(ctx: Context, length: float) -> str:
-        """Set the loop length in beats (adjusts loop end relative to loop start).
-
-        Parameters:
-        - length: The loop length in beats
-        """
-        ableton = get_ableton_connection()
-        result = ableton.send_command("set_loop_length", {"length": length})
-        return f"Loop length set to {result.get('loop_length', length)} beats"
-
-    @mcp.tool()
-    @_tool_handler("setting playback position")
-    def set_playback_position(ctx: Context, position: float) -> str:
-        """Move the playhead to a specific beat position.
-
-        Parameters:
-        - position: The position in beats to jump to (0.0 = start of song)
-        """
-        ableton = get_ableton_connection()
-        result = ableton.send_command("set_playback_position", {"position": position})
-        return f"Playback position set to {result.get('position', position)} beats"
 
     @mcp.tool()
     @_tool_handler("performing undo")
@@ -316,7 +278,7 @@ def register_tools(mcp):
         """Toggle a cue point at the current playback position.
 
         If a cue point exists at the current position, it is deleted.
-        Otherwise, a new cue point is created. Use set_playback_position
+        Otherwise, a new cue point is created. Use set_song_time
         first to move the playhead to the desired location.
         """
         ableton = get_ableton_connection()

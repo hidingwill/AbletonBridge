@@ -177,7 +177,10 @@ class AbletonConnection:
 
                 # Set timeout based on command type (caller override takes priority)
                 if timeout is None:
-                    timeout = 15.0 if is_modifying else 10.0
+                    from MCP_Server.constants import SLOW_COMMAND_TIMEOUTS
+                    timeout = SLOW_COMMAND_TIMEOUTS.get(
+                        command_type, 15.0 if is_modifying else 10.0
+                    )
                 # Receive the response (already parsed by receive_full_response)
                 response = self.receive_full_response(self.sock, timeout=timeout)
                 logger.debug("Response status: %s", response.get('status', 'unknown'))

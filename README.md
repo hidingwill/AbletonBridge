@@ -1,6 +1,6 @@
 # AbletonBridge
 
-**353 tools connecting Claude AI to Ableton Live** (334 core + 19 optional ElevenLabs voice/SFX tools)
+**341 tools connecting Claude AI to Ableton Live** (322 core + 19 optional ElevenLabs voice/SFX tools)
 
 AbletonBridge gives Claude direct control over your Ableton Live session through the Model Context Protocol. Create tracks, write MIDI, design sounds, mix, automate, browse instruments, snapshot presets, and navigate deep into device chains and modulation matrices — all through natural language conversation.
 
@@ -38,7 +38,7 @@ MCP Server (modular architecture):
   connections/       — ableton.py (TCP), m4l.py (UDP/OSC)
   cache/             — browser.py (cache + disk persistence)
   dashboard/         — html.py, server.py (Starlette)
-  tools/             — 14 modules (334 tools)
+  tools/             — 14 modules (322 tools)
   prompts.py         — 4 MCP prompt templates
 ```
 
@@ -51,15 +51,15 @@ MCP Server (modular architecture):
 
 ---
 
-## Tool Overview (334 core + 19 optional = 353 total)
+## Tool Overview (322 core + 19 optional = 341 total)
 
 | Area | Examples | Count |
 |---|---|---|
-| Session & Transport | tempo, play/record, capture, Link, punch, capabilities | ~55 |
-| Tracks & Mixing | create/rename tracks, volume, pan, sends, crossfader, routing | ~28 |
+| Session & Transport | tempo, play/record, capture, Link, punch, capabilities | ~52 |
+| Tracks & Mixing | create/rename tracks, routing, monitoring, groups | ~28 |
 | Clips & Scenes | create/edit clips, follow actions, warp markers, scenes | ~54 |
-| Mixer | volume, pan, sends, crossfader, mute/solo, unified set_mixer | ~22 |
-| Devices & Parameters | load/configure, rack chains, real-time, sidechain by name | ~44 |
+| Mixer | unified set_mixer, batch_set_mixer, sends, crossfader | ~13 |
+| Devices & Parameters | load/configure, rack chains, real-time, sidechain, plugin info | ~44 |
 | Browser & Presets | search/load instruments, presets, device presets | ~12 |
 | Automation | clip/track automation, envelopes, curves | ~12 |
 | Arrangement | arrangement clips, time editing, audio clips | ~12 |
@@ -68,10 +68,10 @@ MCP Server (modular architecture):
 | Snapshots & Macros | snapshot/restore, morph, macros, parameter maps | ~18 |
 | Audio Analysis | audio clip info, track meters, input meters | ~3 |
 | Grid Notation | ASCII drum/melodic pattern I/O | ~2 |
-| Compound Workflows | create instrument track, batch mixer, effect chains | ~10 |
-| **Core subtotal** | | **334** |
+| Compound Workflows | create instrument/drum track, batch mixer, effect chains | ~11 |
+| **Core subtotal** | | **322** |
 | ElevenLabs (optional) | voice generation, SFX, cloning, transcription | 19 |
-| **Total** | | **353** |
+| **Total** | | **341** |
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete per-tool breakdown.
 
@@ -87,21 +87,26 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 - **Deferred processing** — all M4L outlets use `Task.schedule()` to avoid blocking audio/UI thread
 - **LiveAPI cursor reuse** — `goto()` reuses 3 cursors instead of creating ~193 new instances
 - **Fire-and-forget writes** — no post-set readback (the #1 crash pattern)
-- **Dynamic timeouts** — scale with operation size (~150ms/param, min 10s)
+- **Command-specific timeouts** — per-command timeouts (e.g., freeze_track → 60s, load_instrument → 30s) instead of fixed 10s/15s
 - **Socket drain** — clears stale UDP responses before each command
 - **Singleton guard** — exclusive port lock prevents duplicate server instances
 - **Disk-persisted cache** — 6,400+ browser items in gzip; instant startup (~50ms)
 - **Auto-reconnect** — exponential backoff for TCP and UDP connections
 - **Tiered command delays** — 3-tier system (0ms/50ms/200ms) eliminates unnecessary waits for property setters
 - **Async tool handlers** — all tools run via `asyncio.to_thread()`, preventing sync I/O from blocking the event loop
+- **Standardized responses** — all 322 tools return consistent `tool_success()`/`tool_error()` JSON envelopes via decorator
+- **Chunk reassembly hardening** — duplicate detection, progress logging, missing chunk index reporting
+- **Parameter resolution cache** — 500-entry FIFO cache for brute-force display→value resolution (O(1) after first call)
+- **Effect chain persistence** — saved templates survive server restarts via `~/.ableton-bridge/chain_templates.json`
+- **214 tests** — 11 test files covering connections, M4L, cache, creative tools, workflows, and validation edge cases
 
 ---
 
 ## Flexibility
 
 - **Any MCP client** — Claude Desktop, Cursor, Claude Code, or any MCP-compatible tool
-- **291 tools without Max for Live** — full session control via TCP/UDP Remote Script; M4L is optional
-- **+43 deep-access tools with M4L** — hidden parameters, rack internals, audio analysis, event monitoring
+- **282 tools without Max for Live** — full session control via TCP/UDP Remote Script; M4L is optional
+- **+40 deep-access tools with M4L** — hidden parameters, rack internals, audio analysis, event monitoring
 - **+19 optional ElevenLabs tools** — AI voice generation, sound effects, cloning, transcription
 - **Ableton Live 10, 11, and 12** — graceful API fallbacks for version-specific features
 - **Cross-platform** — Windows and macOS
@@ -111,7 +116,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 
 ## Version
 
-**v3.2.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
+**v3.3.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 ---
 

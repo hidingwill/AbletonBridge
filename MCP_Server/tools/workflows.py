@@ -5,16 +5,45 @@ MCP tool call, reducing round-trip overhead by 3-5x for common workflows.
 """
 import json
 import logging
+import os
 from typing import List, Optional
 from mcp.server.fastmcp import Context
-from MCP_Server.tools._base import _tool_handler, _m4l_result
+from MCP_Server.tools._base import _tool_handler, _m4l_result, _report_progress
 from MCP_Server.connections.ableton import get_ableton_connection
 from MCP_Server.connections.m4l import get_m4l_connection
 from MCP_Server.cache.browser import resolve_device_uri
 from MCP_Server.validation import _validate_index, _validate_index_allow_negative, _validate_range, _validate_notes
+from MCP_Server.constants import CHAIN_TEMPLATES_PATH
 import MCP_Server.state as state
 
 logger = logging.getLogger("AbletonBridge")
+
+
+def _persist_chain_templates():
+    """Save effect chain templates to disk (plain JSON)."""
+    try:
+        with state.store_lock:
+            data = dict(state.effect_chain_store)
+        os.makedirs(os.path.dirname(CHAIN_TEMPLATES_PATH), exist_ok=True)
+        with open(CHAIN_TEMPLATES_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info("Effect chain templates saved to disk (%d templates)", len(data))
+    except Exception as e:
+        logger.warning("Failed to persist chain templates: %s", e)
+
+
+def load_chain_templates_from_disk():
+    """Load effect chain templates from disk into state. Called at startup."""
+    if not os.path.exists(CHAIN_TEMPLATES_PATH):
+        return
+    try:
+        with open(CHAIN_TEMPLATES_PATH) as f:
+            data = json.load(f)
+        with state.store_lock:
+            state.effect_chain_store.update(data)
+        logger.info("Loaded %d effect chain templates from disk", len(data))
+    except Exception as e:
+        logger.warning("Failed to load chain templates from disk: %s", e)
 
 
 def register_tools(mcp):
@@ -42,12 +71,15 @@ def register_tools(mcp):
         """
         _validate_index_allow_negative(index, "index", min_value=-1)
         ableton = get_ableton_connection()
+        total_steps = 4 if color_index >= 0 else 3
 
         # Step 1: Create the MIDI track
+        _report_progress(ctx, 1, total_steps, "Creating MIDI track")
         result = ableton.send_command("create_midi_track", {"index": index})
         track_idx = result.get("index", 0)
 
         # Step 2: Resolve and load the instrument
+        _report_progress(ctx, 2, total_steps, "Loading instrument")
         uri = resolve_device_uri(instrument_name)
         try:
             ableton.send_command("load_instrument_or_effect", {
@@ -57,6 +89,7 @@ def register_tools(mcp):
             logger.warning("Failed to load instrument '%s': %s", instrument_name, e)
 
         # Step 3: Set track name
+        _report_progress(ctx, 3, total_steps, "Setting track name")
         name = track_name or instrument_name
         try:
             ableton.send_command("set_track_name", {
@@ -260,8 +293,10 @@ def register_tools(mcp):
         ableton = get_ableton_connection()
         loaded = []
         failed = []
+        total = len(effects)
 
-        for effect_name in effects:
+        for i, effect_name in enumerate(effects):
+            _report_progress(ctx, i + 1, total, f"Loading {effect_name}")
             uri = resolve_device_uri(effect_name)
             try:
                 ableton.send_command("load_instrument_or_effect", {
@@ -306,8 +341,10 @@ def register_tools(mcp):
         ableton = get_ableton_connection()
         applied = 0
         errors = []
+        total = len(settings)
 
         for i, setting in enumerate(settings):
+            _report_progress(ctx, i + 1, total, f"Setting mixer {i + 1}/{total}")
             if not isinstance(setting, dict) or "track_index" not in setting:
                 errors.append({"index": i, "error": "missing track_index"})
                 continue
@@ -440,6 +477,7 @@ def register_tools(mcp):
 
         with state.store_lock:
             state.effect_chain_store[template_name.strip()] = template
+        _persist_chain_templates()
 
         return json.dumps({
             "template_name": template_name.strip(),
@@ -493,6 +531,147 @@ def register_tools(mcp):
             "template_name": template_name,
             "loaded": loaded,
             "failed": failed,
+        })
+
+    @mcp.tool()
+    @_tool_handler("creating drum track")
+    def create_drum_track(
+        ctx: Context,
+        pattern_style: str = "basic_rock",
+        name: str = "Drums",
+        clip_length: float = 4.0,
+        velocity: int = 100,
+        swing: float = 0.0,
+        index: int = -1,
+    ) -> str:
+        """Create a MIDI track with Drum Rack, a clip, and a drum pattern in one step.
+
+        Combines create_midi_track + load_instrument_or_effect (Drum Rack)
+        + create_clip + generate drum pattern + add_notes into a single call.
+
+        Parameters:
+        - pattern_style: Drum pattern style:
+            "basic_rock", "house", "hiphop", "dnb", "halftime",
+            "jazz_ride", "latin", "trap"
+        - name: Track name (default "Drums")
+        - clip_length: Clip length in beats (default 4.0)
+        - velocity: Base note velocity 1-127 (default 100)
+        - swing: Swing amount 0.0-1.0 (default 0.0)
+        - index: Track position (-1 = end of list)
+        """
+        _validate_index_allow_negative(index, "index", min_value=-1)
+        _validate_range(velocity, "velocity", 1, 127)
+        _validate_range(swing, "swing", 0.0, 1.0)
+        if not isinstance(clip_length, (int, float)) or clip_length <= 0:
+            raise ValueError(f"clip_length must be a positive number, got {clip_length}")
+
+        KICK, SNARE, HIHAT, OPEN_HAT = 36, 38, 42, 46
+        RIDE, CRASH, CLAP, RIM = 51, 49, 39, 37
+
+        patterns = {
+            "basic_rock": [
+                (KICK,    [0.0, 2.0],           1.0, 0.25),
+                (SNARE,   [1.0, 3.0],           1.0, 0.25),
+                (HIHAT,   [i * 0.5 for i in range(8)], 0.7, 0.125),
+            ],
+            "house": [
+                (KICK,    [0.0, 1.0, 2.0, 3.0], 1.0, 0.25),
+                (CLAP,    [1.0, 3.0],           0.9, 0.25),
+                (OPEN_HAT,[0.5, 1.5, 2.5, 3.5], 0.6, 0.25),
+                (HIHAT,   [i * 0.25 for i in range(16)], 0.5, 0.0625),
+            ],
+            "hiphop": [
+                (KICK,    [0.0, 0.75, 2.0, 2.5], 1.0, 0.25),
+                (SNARE,   [1.0, 3.0],           1.0, 0.25),
+                (HIHAT,   [i * 0.5 for i in range(8)], 0.65, 0.125),
+            ],
+            "dnb": [
+                (KICK,    [0.0, 1.75],          1.0, 0.25),
+                (SNARE,   [1.0, 3.0],           1.0, 0.25),
+                (HIHAT,   [i * 0.25 for i in range(16)], 0.6, 0.0625),
+            ],
+            "halftime": [
+                (KICK,    [0.0],                1.0, 0.25),
+                (SNARE,   [2.0],                1.0, 0.25),
+                (HIHAT,   [i * 0.5 for i in range(8)], 0.6, 0.125),
+            ],
+            "jazz_ride": [
+                (RIDE,    [0.0, 0.67, 1.0, 1.67, 2.0, 2.67, 3.0, 3.67], 0.7, 0.25),
+                (KICK,    [0.0, 2.5],           0.5, 0.25),
+                (HIHAT,   [1.0, 3.0],           0.4, 0.125),
+            ],
+            "latin": [
+                (KICK,    [0.0, 1.5, 3.0],      1.0, 0.25),
+                (RIM,     [0.5, 1.0, 2.5, 3.0], 0.8, 0.125),
+                (HIHAT,   [i * 0.25 for i in range(16)], 0.5, 0.0625),
+                (OPEN_HAT,[1.5, 3.5],           0.7, 0.25),
+            ],
+            "trap": [
+                (KICK,    [0.0, 0.75, 2.0],     1.0, 0.25),
+                (SNARE,   [1.0, 3.0],           1.0, 0.25),
+                (HIHAT,   [i * 0.125 for i in range(32)], 0.55, 0.0625),
+                (OPEN_HAT,[1.75, 3.75],         0.7, 0.125),
+            ],
+        }
+
+        if pattern_style not in patterns:
+            raise ValueError(f"Unknown style '{pattern_style}'. Available: {', '.join(patterns.keys())}")
+
+        ableton = get_ableton_connection()
+
+        # Step 1: Create MIDI track
+        result = ableton.send_command("create_midi_track", {"index": index})
+        track_idx = result.get("index", 0)
+
+        # Step 2: Load Drum Rack
+        uri = resolve_device_uri("Drum Rack")
+        try:
+            ableton.send_command("load_instrument_or_effect", {
+                "track_index": track_idx, "uri": uri
+            })
+        except Exception as e:
+            logger.warning("Failed to load Drum Rack: %s", e)
+
+        # Step 3: Set track name
+        try:
+            ableton.send_command("set_track_name", {
+                "track_index": track_idx, "name": name
+            })
+        except Exception:
+            pass
+
+        # Step 4: Create clip
+        ableton.send_command("create_clip", {
+            "track_index": track_idx, "clip_index": 0, "length": clip_length
+        })
+
+        # Step 5: Generate and add drum pattern notes
+        notes = []
+        swing_offset = swing * 0.08
+        for pitch, positions, vel_ratio, duration in patterns[pattern_style]:
+            for pos in positions:
+                if pos >= clip_length:
+                    continue
+                actual_pos = pos
+                if swing > 0 and (pos * 4) % 2 == 1:
+                    actual_pos += swing_offset
+                notes.append({
+                    "pitch": pitch,
+                    "start_time": actual_pos,
+                    "duration": duration,
+                    "velocity": max(1, min(127, int(velocity * vel_ratio))),
+                })
+
+        ableton.send_command("add_notes_to_clip", {
+            "track_index": track_idx, "clip_index": 0, "notes": notes
+        })
+
+        return json.dumps({
+            "track_index": track_idx,
+            "name": name,
+            "pattern_style": pattern_style,
+            "note_count": len(notes),
+            "clip_length": clip_length,
         })
 
     @mcp.tool()

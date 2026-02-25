@@ -4,6 +4,52 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v3.3.0 — 2026-02-25
+
+### Tool Consolidation, Test Coverage, Reliability Hardening & Feature Enhancements
+
+Four-phase sweep: consolidated 14 redundant tools, expanded test suite from 5 to 11 files (64 → 214 tests), standardized all error responses, added disk persistence for effect chains, and shipped new plugin info tool with MCP progress notifications.
+
+#### Phase A: Tool Consolidation (334 → 322 core tools)
+
+**Removed redundant tools (−14):**
+- **A.1**: Removed `set_playback_position` duplicate — `set_song_time` is the canonical tool (updated docstring for clarity)
+- **A.2**: Removed `set_loop_start`, `set_loop_end`, `set_loop_length` — all superseded by `set_song_loop`, which now accepts an optional `end` parameter (`length = end - start`)
+- **A.3**: Removed 9 legacy individual mixer tools (`set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_return_track_volume`, `set_return_track_pan`, `set_return_track_mute`, `set_return_track_solo`, `set_master_volume`) — all superseded by `set_mixer(track_type, volume, pan, mute, solo)`
+- **A.4**: Merged `set_sidechain_by_name` into `set_compressor_sidechain` — single tool now accepts either raw indices or an optional `source_track_name` parameter for name-based resolution
+
+**New tools (+2):**
+- **A.6**: `create_drum_track(pattern_style, name, clip_length, bpm)` — compound tool that creates MIDI track + loads Drum Rack + creates clip + generates drum pattern + names track, all in one call. Supports 8 pattern styles (rock, house, hiphop, dnb, halftime, jazz, latin, trap)
+- **D.1**: `get_plugin_info(track_index, device_index, track_type)` — reports device class name (PluginDevice, AuPluginDevice, MxDeviceAudioEffect, etc.), parameter count, "configured" status, and device-type-specific guidance for VST/AU workflows
+
+#### Phase B: Test Coverage Expansion (5 → 11 test files, 64 → 214 tests)
+
+**6 new test files (150 new tests):**
+- `tests/test_connections.py` (8 tests) — `AbletonConnection.send_command()` with mocked socket: TCP round-trip, tier-based delay verification, non-idempotent retry prevention, socket reconnection, timeout handling
+- `tests/test_m4l.py` (10 tests) — `M4LConnection` OSC message building, base64 parsing (URL-safe and standard), chunked response reassembly (happy path, out-of-order, missing chunks, duplicates), `send_command_with_retry()` on "busy" responses
+- `tests/test_browser_cache.py` (7 tests) — URI map construction, priority resolution, duplicate name handling, gzip disk persistence round-trip, cache-ready/not-ready resolution paths
+- `tests/test_creative.py` (46 tests) — Euclidean rhythm algorithm (known input/output pairs including tresillo, cinquillo, rumba), all scale types (major, minor, dorian, mixolydian, pentatonic, blues), chord voicings (major/minor/dim/aug/7th), drum pattern generation across all 8 styles, arpeggio modes, bass line patterns
+- `tests/test_workflows.py` (26 tests) — compound tools with mocked Ableton connection: `create_instrument_track` (4 commands in order), `create_clip_with_notes`, `setup_send_return`, `get_full_session_state`, `apply_effect_chain` (N loads + error handling), `batch_set_mixer` (correct commands per track_type), `save_effect_chain`/`load_effect_chain` round-trip
+- `tests/test_validation_edge_cases.py` (53 tests) — `_reduce_automation_points()` RDP algorithm with pathological inputs (all same time, single point, exactly max_points), `_validate_notes()` edge cases (float pitch, boolean velocity, empty lists), automation validate→reduce pipeline integration
+
+#### Phase C: Reliability & Error Consistency
+
+- **C.1**: Auto-wrap all tool responses — `_tool_handler` decorator now wraps every return value in `tool_success()`/`tool_error()` JSON envelopes. Plain-string returns get wrapped automatically; JSON returns pass through. All error paths (ValueError, ConnectionError, generic Exception) use `tool_error()`. 100% response standardization via one decorator change, no individual tool modifications needed
+- **C.2**: Effect chain disk persistence — templates saved to `~/.ableton-bridge/chain_templates.json` on every `save_effect_chain` call; loaded into `state.effect_chain_store` on server startup. Survives server restarts
+- **C.3**: Chunk reassembly hardening — duplicate chunk detection (logs warning, ignores re-received chunks), progress logging every 5 chunks for large responses, missing chunk index reporting on timeout (error message now includes `missing: [2, 7, 13]` instead of generic "timeout")
+- **C.4**: Command-specific timeouts — `load_instrument_or_effect` → 30s, `freeze_track` → 60s, `audio_to_midi` → 30s, `get_browser_items_at_path` → 20s, `load_sample`/`load_drum_kit` → 30s, `unfreeze_track` → 30s. Default remains 10s (read) / 15s (modify) when no override specified
+- **C.5**: Brute-force parameter resolution cache — 500-entry FIFO cache keyed by `(param.name, param.min, param.max)`. First call remains O(n) but caches the entire display→value mapping for the parameter type; all subsequent calls for the same parameter type are O(1). Implemented in `AbletonBridge_Remote_Script/handlers/devices.py`
+
+#### Phase D: Feature Enhancements
+
+- **D.1**: `get_plugin_info` tool — see Phase A section above
+- **D.4**: Updated `docs/PLUGIN_COMPATIBILITY.md` — comprehensive guide covering native/M4L/VST3/VST2/AU support levels, Configure mode workflow, known-good patterns for popular plugins (Serum, FabFilter, Kontakt, Omnisphere), troubleshooting, and feature comparison table
+- **D.5**: MCP progress notifications — `_long_running_handler` variant of `_tool_handler` that calls `ctx.report_progress(current, total)` at meaningful checkpoints. Applied to `refresh_browser_cache`, `freeze_track`, `get_full_session_state`, `apply_effect_chain`, `create_drum_track`
+
+### Tool count: **322** core + **19 optional** (ElevenLabs) = **341 total**
+
+---
+
 ## v3.2.0 — 2026-02-23
 
 ### Architecture Overhaul, Performance, Compound Tools, Full-Stack Features & MCP Protocol Enrichment
