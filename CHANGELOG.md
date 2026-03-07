@@ -4,6 +4,42 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v3.4.0 — 2026-03-07
+
+### Performance & Stability: Concurrency Control
+
+Eliminated Ableton freezing caused by rapid tool call bursts. Added layered concurrency controls across the MCP Server and Remote Script, reduced command delays by 5-10x, and hardened thread safety throughout.
+
+#### Phase 1: Critical Fixes (Stop the Freezing)
+
+- **Async semaphore** — added `asyncio.Semaphore(1)` in `_tool_handler` decorator to gate all 322 tools. Only one tool occupies the thread pool (and TCP socket) at a time. Prevents thread pool exhaustion and command flooding
+- **TCP socket lock** — added `threading.Lock` around the entire send/receive cycle in `AbletonConnection.send_command()`. Prevents multiple threads from corrupting the shared socket stream and `_recv_buffer`
+- **Reduced command delays (5-10x)** — Tier 2 (structural commands): 200ms → 20ms total. Tier 1 (note/clip operations): 50ms → 10ms. Retry sleep: 300ms → 100ms. Safe because the semaphore now serializes commands properly
+- **Tool execution timeout** — wrapped `asyncio.to_thread()` with `asyncio.wait_for(timeout=120s)`. Prevents a stuck tool from blocking the semaphore (and all subsequent tools) indefinitely. On timeout, semaphore is released and pipeline continues
+
+#### Phase 2: Performance Improvements
+
+- **M4L UDP lock** — added `threading.Lock` on `M4LConnection.send_command()` to prevent response mixing when multiple M4L tools run concurrently
+- **M4L ping cache optimization** — `get_m4l_connection()` now checks `state.m4l_ping_cache` (5s TTL) before doing a live UDP ping. Saves ~50-200ms per M4L tool call
+- **Bounded thread pool** — explicit `ThreadPoolExecutor(max_workers=8)` set during server startup. Prevents unbounded thread creation (Python default is ~32 workers)
+
+#### Phase 3: Robustness Improvements
+
+- **Thread-safe client tracking** — added `threading.Lock` around all access to `client_threads` and `client_sockets` in the Remote Script. Prevents race conditions during concurrent client connect/disconnect
+- **Inter-command breathing room** — added 5ms delay after each command response in the Remote Script. Defense-in-depth against Ableton's scheduler being flooded during bursts
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `MCP_Server/tools/_base.py` | Semaphore + wait_for timeout |
+| `MCP_Server/connections/ableton.py` | TCP send_lock + reduced delays |
+| `MCP_Server/connections/m4l.py` | UDP send_lock + ping cache |
+| `MCP_Server/server.py` | Bounded thread pool (8 workers) |
+| `AbletonBridge_Remote_Script/__init__.py` | Client lock + inter-command delay |
+
+---
+
 ## v3.3.0 — 2026-02-25
 
 ### Tool Consolidation, Test Coverage, Reliability Hardening & Feature Enhancements

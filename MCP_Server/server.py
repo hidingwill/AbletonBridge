@@ -11,6 +11,8 @@ All mutable runtime state lives in MCP_Server/state.py
 # ---------------------------------------------------------------------------
 # Standard library
 # ---------------------------------------------------------------------------
+import asyncio
+import concurrent.futures
 import logging
 import os
 import socket
@@ -193,6 +195,15 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 
         logger.info("AbletonBridge server starting up")
         state.server_start_time = time.time()
+
+        # Bound the thread pool used by asyncio.to_thread() to prevent
+        # excessive thread creation. With the tool semaphore limiting
+        # concurrent TCP operations to 1, most workers stay idle; 8 provides
+        # headroom for background tasks (browser cache, M4L, dashboard).
+        loop = asyncio.get_event_loop()
+        loop.set_default_executor(
+            concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        )
 
         # Connect to Ableton (Remote Script TCP)
         try:

@@ -6,12 +6,25 @@ import logging
 
 logger = logging.getLogger("AbletonBridge")
 
+# Limits concurrent tool executions that use the Ableton TCP connection.
+# Set to 1 because the TCP protocol is strictly request-response on a single socket.
+# This prevents thread pool exhaustion and ensures orderly command dispatch.
+_ableton_semaphore = asyncio.Semaphore(1)
+
+# Absolute timeout for any single tool call (prevents a stuck tool from
+# blocking the semaphore indefinitely).
+_TOOL_TIMEOUT_SECONDS = 120.0
+
 
 def _tool_handler(error_prefix: str):
     """Decorator that wraps tool functions with standard error handling.
 
     Runs the synchronous tool function in a thread pool via asyncio.to_thread()
     so it doesn't block the FastMCP async event loop during TCP/UDP I/O.
+
+    An asyncio.Semaphore gates entry so that only one tool occupies the thread
+    pool (and the shared TCP socket) at a time. An outer timeout ensures a
+    stuck tool releases the semaphore after _TOOL_TIMEOUT_SECONDS.
 
     All plain-string returns are wrapped in tool_success() for consistent JSON
     envelope. Returns that are already JSON (start with '{' or '[') pass through.
@@ -24,13 +37,20 @@ def _tool_handler(error_prefix: str):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             try:
-                result = await asyncio.to_thread(func, *args, **kwargs)
+                async with _ableton_semaphore:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(func, *args, **kwargs),
+                        timeout=_TOOL_TIMEOUT_SECONDS,
+                    )
                 if isinstance(result, str):
                     stripped = result.strip()
                     if stripped.startswith(("{", "[")):
                         return result  # already structured JSON
                     return tool_success(result)
                 return result
+            except asyncio.TimeoutError:
+                logger.error("Tool timed out after %ds: %s", _TOOL_TIMEOUT_SECONDS, error_prefix)
+                return tool_error(f"Tool timed out after {_TOOL_TIMEOUT_SECONDS}s: {error_prefix}")
             except ValueError as e:
                 return tool_error(f"Invalid input: {e}")
             except ConnectionError as e:

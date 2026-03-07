@@ -73,6 +73,7 @@ class AbletonConnection:
 
     def __post_init__(self):
         self._recv_buffer = ""
+        self._send_lock = threading.Lock()
 
     def _ensure_udp_socket(self):
         """Create a UDP socket for real-time parameter sending if not already open."""
@@ -148,67 +149,70 @@ class AbletonConnection:
         max_attempts = 1 if command_type in NON_IDEMPOTENT_COMMANDS else 2
         is_modifying = command_type in MODIFYING_COMMANDS
 
-        # Determine delay tier: Tier 0 = no delay, Tier 1 = 50ms post, Tier 2 = 100ms pre+post
+        # Determine delay tier: reduced delays since the async semaphore in
+        # _tool_handler already serializes tool calls, preventing command flooding.
+        # Tier 0 = no delay, Tier 1 = 10ms post, Tier 2 = 10ms pre+post
         if command_type in TIER_2_COMMANDS:
-            pre_delay, post_delay = 0.1, 0.1
+            pre_delay, post_delay = 0.01, 0.01
         elif command_type in TIER_1_COMMANDS:
-            pre_delay, post_delay = 0, 0.05
+            pre_delay, post_delay = 0, 0.01
         else:
             pre_delay, post_delay = 0, 0
 
         for attempt in range(1, max_attempts + 1):
-            if not self.sock and not self.connect():
-                raise ConnectionError("Not connected to Ableton")
+            with self._send_lock:
+                if not self.sock and not self.connect():
+                    raise ConnectionError("Not connected to Ableton")
 
-            command = {
-                "type": command_type,
-                "params": params or {}
-            }
+                command = {
+                    "type": command_type,
+                    "params": params or {}
+                }
 
-            try:
-                logger.debug("Sending command: %s (attempt %d)", command_type, attempt)
+                try:
+                    logger.debug("Sending command: %s (attempt %d)", command_type, attempt)
 
-                # Send the command as newline-delimited JSON
-                self.sock.sendall((json.dumps(command) + '\n').encode('utf-8'))
+                    # Send the command as newline-delimited JSON
+                    self.sock.sendall((json.dumps(command) + '\n').encode('utf-8'))
 
-                # Pre-delay: give Ableton time to process before we read the response
-                if pre_delay:
-                    time.sleep(pre_delay)
+                    # Pre-delay: give Ableton time to process before we read the response
+                    if pre_delay:
+                        time.sleep(pre_delay)
 
-                # Set timeout based on command type (caller override takes priority)
-                if timeout is None:
-                    from MCP_Server.constants import SLOW_COMMAND_TIMEOUTS
-                    timeout = SLOW_COMMAND_TIMEOUTS.get(
-                        command_type, 15.0 if is_modifying else 10.0
-                    )
-                # Receive the response (already parsed by receive_full_response)
-                response = self.receive_full_response(self.sock, timeout=timeout)
-                logger.debug("Response status: %s", response.get('status', 'unknown'))
+                    # Set timeout based on command type (caller override takes priority)
+                    if timeout is None:
+                        from MCP_Server.constants import SLOW_COMMAND_TIMEOUTS
+                        timeout = SLOW_COMMAND_TIMEOUTS.get(
+                            command_type, 15.0 if is_modifying else 10.0
+                        )
+                    # Receive the response (already parsed by receive_full_response)
+                    response = self.receive_full_response(self.sock, timeout=timeout)
+                    logger.debug("Response status: %s", response.get('status', 'unknown'))
 
-                if response.get("status") == "error":
-                    logger.error("Ableton error: %s", response.get('message'))
-                    raise Exception(response.get("message", "Unknown error from Ableton"))
+                    if response.get("status") == "error":
+                        logger.error("Ableton error: %s", response.get('message'))
+                        raise Exception(response.get("message", "Unknown error from Ableton"))
 
-                # Post-delay: let Ableton settle before the next command
-                if post_delay:
-                    time.sleep(post_delay)
+                    # Post-delay: let Ableton settle before the next command
+                    if post_delay:
+                        time.sleep(post_delay)
 
-                return response.get("result", {})
+                    return response.get("result", {})
 
-            except Exception as e:
-                logger.error("Command '%s' attempt %d failed: %s", command_type, attempt, e)
-                # Close the broken socket and clear buffer
-                self.disconnect()
-                self._recv_buffer = ""
+                except Exception as e:
+                    logger.error("Command '%s' attempt %d failed: %s", command_type, attempt, e)
+                    # Close the broken socket and clear buffer
+                    self.disconnect()
+                    self._recv_buffer = ""
 
-                if attempt < max_attempts:
-                    # Wait briefly then retry with a fresh connection
-                    time.sleep(0.3)
-                    if not self.connect():
-                        raise ConnectionError("Failed to reconnect to Ableton")
-                    logger.info("Reconnected, retrying command...")
-                else:
-                    raise Exception(f"Command '{command_type}' failed after {max_attempts} attempts: {e}")
+                    if attempt < max_attempts:
+                        # Wait briefly then retry with a fresh connection
+                        time.sleep(0.1)
+                        if not self.connect():
+                            raise ConnectionError("Failed to reconnect to Ableton")
+                        logger.info("Reconnected, retrying command...")
+                    else:
+                        raise Exception(f"Command '{command_type}' failed after {max_attempts} attempts: {e}")
 
 
 def get_ableton_connection():

@@ -592,6 +592,7 @@ class AbletonBridge(ControlSurface):
         self.server = None
         self.client_threads = []
         self.client_sockets = []
+        self._client_lock = threading.Lock()  # protects client_threads and client_sockets
         self.server_thread = None
         self.running = False
 
@@ -621,7 +622,10 @@ class AbletonBridge(ControlSurface):
         self.udp_running = False
 
         # Close all client sockets so their threads can exit
-        for sock in self.client_sockets[:]:
+        with self._client_lock:
+            socks_to_close = self.client_sockets[:]
+            self.client_sockets = []
+        for sock in socks_to_close:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
             except (OSError, socket.error):
@@ -630,7 +634,6 @@ class AbletonBridge(ControlSurface):
                 sock.close()
             except (OSError, socket.error):
                 pass
-        self.client_sockets = []
 
         # Stop the server
         if self.server:
@@ -648,7 +651,9 @@ class AbletonBridge(ControlSurface):
             self.server_thread.join(3.0)
 
         # Wait briefly for client threads to exit
-        for client_thread in self.client_threads[:]:
+        with self._client_lock:
+            threads_to_join = self.client_threads[:]
+        for client_thread in threads_to_join:
             if client_thread.is_alive():
                 client_thread.join(3.0)
 
@@ -795,11 +800,11 @@ class AbletonBridge(ControlSurface):
                     client_thread.daemon = True
                     client_thread.start()
 
-                    self.client_threads.append(client_thread)
-                    self.client_sockets.append(client)
-
-                    # Clean up finished client threads
-                    self.client_threads = [t for t in self.client_threads if t.is_alive()]
+                    with self._client_lock:
+                        self.client_threads.append(client_thread)
+                        self.client_sockets.append(client)
+                        # Clean up finished client threads
+                        self.client_threads = [t for t in self.client_threads if t.is_alive()]
 
                 except socket.timeout:
                     continue
@@ -857,6 +862,10 @@ class AbletonBridge(ControlSurface):
                             self.log_message("Client disconnected during response send")
                             break
 
+                        # Small breathing room between consecutive commands to prevent
+                        # flooding Ableton's main thread scheduler during rapid bursts.
+                        time.sleep(0.005)
+
                     # 1MB safety limit
                     if len(buffer) > 1048576:
                         self.log_message("Buffer overflow (>1MB without newline), disconnecting client")
@@ -890,10 +899,11 @@ class AbletonBridge(ControlSurface):
                 client.close()
             except (OSError, socket.error):
                 pass
-            try:
-                self.client_sockets.remove(client)
-            except ValueError:
-                pass
+            with self._client_lock:
+                try:
+                    self.client_sockets.remove(client)
+                except ValueError:
+                    pass
             self.log_message("Client handler stopped")
 
     # ------------------------------------------------------------------

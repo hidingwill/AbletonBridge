@@ -4,10 +4,11 @@ import socket
 import json
 import logging
 import time
+import threading
 import uuid
 import base64
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, List
 
 import MCP_Server.state as state
@@ -30,6 +31,7 @@ class M4LConnection:
     send_sock: socket.socket = None
     recv_sock: socket.socket = None
     _connected: bool = False
+    _send_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def connect(self) -> bool:
         """Set up UDP sockets for M4L communication."""
@@ -389,6 +391,9 @@ class M4LConnection:
 
         Includes automatic reconnect: if the send or receive fails, the
         UDP sockets are recreated and the command is retried once.
+
+        A threading.Lock serializes access so that concurrent tool threads
+        cannot interleave send/recv operations on the shared UDP sockets.
         """
         params = params or {}
         request_id = str(uuid.uuid4())[:8]
@@ -414,59 +419,60 @@ class M4LConnection:
 
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
-            if not self._connected:
-                if not self.connect():
-                    raise ConnectionError("Could not establish M4L UDP connection.")
+            with self._send_lock:
+                if not self._connected:
+                    if not self.connect():
+                        raise ConnectionError("Could not establish M4L UDP connection.")
 
-            # Drain any stale data in the recv socket before sending
-            self._drain_recv_socket()
-            self.recv_sock.settimeout(timeout)
+                # Drain any stale data in the recv socket before sending
+                self._drain_recv_socket()
+                self.recv_sock.settimeout(timeout)
 
-            try:
-                self.send_sock.sendto(osc, (self.send_host, self.send_port))
-            except Exception as e:
-                logger.error("Failed to send UDP command to M4L (attempt %d): %s", attempt, e)
-                if attempt < max_attempts:
-                    self.disconnect()
-                    time.sleep(0.2)
-                    continue
-                raise ConnectionError("Failed to send command to M4L bridge.")
+                try:
+                    self.send_sock.sendto(osc, (self.send_host, self.send_port))
+                except Exception as e:
+                    logger.error("Failed to send UDP command to M4L (attempt %d): %s", attempt, e)
+                    if attempt < max_attempts:
+                        self.disconnect()
+                        time.sleep(0.2)
+                        continue
+                    raise ConnectionError("Failed to send command to M4L bridge.")
 
-            try:
-                data, _addr = self.recv_sock.recvfrom(65535)
-                result = self._parse_m4l_response(data)
+                try:
+                    data, _addr = self.recv_sock.recvfrom(65535)
+                    result = self._parse_m4l_response(data)
 
-                # Handle chunked responses from the M4L bridge.
-                # Large responses (>1500 chars JSON) are split into multiple
-                # UDP packets, each wrapped in an envelope: {"_c":idx,"_t":total,"_d":"base64piece"}
-                if "_c" in result and "_t" in result:
-                    result = self._reassemble_chunked_response(result)
+                    # Handle chunked responses from the M4L bridge.
+                    # Large responses (>1500 chars JSON) are split into multiple
+                    # UDP packets, each wrapped in an envelope: {"_c":idx,"_t":total,"_d":"base64piece"}
+                    if "_c" in result and "_t" in result:
+                        result = self._reassemble_chunked_response(result)
 
-                # Verify request_id matches -- drain stale responses if mismatch
-                resp_id = result.get("id", "")
-                if resp_id and resp_id != request_id:
-                    for _drain in range(5):
-                        logger.warning("M4L response id mismatch: expected %s, got %s -- draining", request_id, resp_id)
-                        try:
-                            data, _addr = self.recv_sock.recvfrom(65535)
-                            result = self._parse_m4l_response(data)
-                            if "_c" in result and "_t" in result:
-                                result = self._reassemble_chunked_response(result)
-                            resp_id = result.get("id", "")
-                            if not resp_id or resp_id == request_id:
-                                break
-                        except socket.timeout:
-                            raise Exception(f"Timeout waiting for correct M4L response (expected {request_id})")
-                    else:
-                        logger.error("Could not find matching M4L response after 5 drains (expected %s)", request_id)
-                return result
-            except socket.timeout:
-                logger.warning("M4L response timeout (attempt %d)", attempt)
-                if attempt < max_attempts:
-                    self.disconnect()
-                    time.sleep(0.2)
-                    continue
-                raise Exception("Timeout waiting for M4L bridge response. Is the M4L device loaded?")
+                    # Verify request_id matches -- drain stale responses if mismatch
+                    resp_id = result.get("id", "")
+                    if resp_id and resp_id != request_id:
+                        for _drain in range(5):
+                            logger.warning("M4L response id mismatch: expected %s, got %s -- draining", request_id, resp_id)
+                            try:
+                                data, _addr = self.recv_sock.recvfrom(65535)
+                                result = self._parse_m4l_response(data)
+                                if "_c" in result and "_t" in result:
+                                    result = self._reassemble_chunked_response(result)
+                                resp_id = result.get("id", "")
+                                if not resp_id or resp_id == request_id:
+                                    break
+                            except socket.timeout:
+                                raise Exception(f"Timeout waiting for correct M4L response (expected {request_id})")
+                        else:
+                            logger.error("Could not find matching M4L response after 5 drains (expected %s)", request_id)
+                    return result
+                except socket.timeout:
+                    logger.warning("M4L response timeout (attempt %d)", attempt)
+                    if attempt < max_attempts:
+                        self.disconnect()
+                        time.sleep(0.2)
+                        continue
+                    raise Exception("Timeout waiting for M4L bridge response. Is the M4L device loaded?")
 
     def send_command_with_retry(self, command_type: str, params: Dict[str, Any] = None, timeout: float = None, max_attempts: int = 3) -> Dict[str, Any]:
         """Send command with retry logic for 'busy' responses from M4L bridge."""
@@ -657,11 +663,19 @@ def get_m4l_connection() -> M4LConnection:
     """Get or create a connection to the M4L bridge device.
 
     Always attempts a fresh connection if the existing one is dead.
-    Includes a ping to verify the M4L device is actually responding.
+    Uses a cached ping result to avoid a full UDP round trip on every call.
     """
-    # If we have a connected instance, verify it still works with a ping
+    # If we have a connected instance, verify it still works
     if state.m4l_connection is not None and state.m4l_connection._connected:
+        # Use cached ping result if recent enough (avoids ~50-200ms round trip)
+        now = time.time()
+        if (now - state.m4l_ping_cache["timestamp"]) < state.M4L_PING_CACHE_TTL:
+            if state.m4l_ping_cache["result"]:
+                return state.m4l_connection
+        # Cache expired or stale, do a live ping
         if state.m4l_connection.ping():
+            state.m4l_ping_cache["result"] = True
+            state.m4l_ping_cache["timestamp"] = now
             return state.m4l_connection
         # Ping failed -- tear down and try fresh
         logger.warning("M4L bridge ping failed on existing connection, reconnecting...")

@@ -92,8 +92,11 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 - **Singleton guard** — exclusive port lock prevents duplicate server instances
 - **Disk-persisted cache** — 6,400+ browser items in gzip; instant startup (~50ms)
 - **Auto-reconnect** — exponential backoff for TCP and UDP connections
-- **Tiered command delays** — 3-tier system (0ms/50ms/200ms) eliminates unnecessary waits for property setters
+- **Tiered command delays** — 3-tier system (0ms/10ms/20ms) eliminates unnecessary waits for property setters
 - **Async tool handlers** — all tools run via `asyncio.to_thread()`, preventing sync I/O from blocking the event loop
+- **Concurrency control** — async semaphore serializes tool dispatch; threading locks protect TCP and UDP sockets from corruption
+- **Tool execution timeout** — 120s hard timeout prevents stuck tools from blocking the entire pipeline
+- **Bounded thread pool** — explicit 8-worker limit prevents resource exhaustion during rapid tool call bursts
 - **Standardized responses** — all 322 tools return consistent `tool_success()`/`tool_error()` JSON envelopes via decorator
 - **Chunk reassembly hardening** — duplicate detection, progress logging, missing chunk index reporting
 - **Parameter resolution cache** — 500-entry FIFO cache for brute-force display→value resolution (O(1) after first call)
@@ -116,7 +119,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 
 ## Version
 
-**v3.3.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
+**v3.4.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 ---
 
