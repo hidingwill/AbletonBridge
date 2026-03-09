@@ -21,7 +21,7 @@ outlets = 1;
 // Initialization
 // ---------------------------------------------------------------------------
 function loadbang() {
-    post("AbletonBridge M4L Bridge v4.0.0 starting...\n");
+    post("AbletonBridge M4L Bridge v3.5.1 starting...\n");
     post("Listening for OSC commands on port 9878.\n");
     post("Dashboard: http://127.0.0.1:9880\n");
 }
@@ -272,7 +272,7 @@ function handlePing(args) {
     var requestId = (args.length > 0) ? args[0].toString() : "";
     var response = {
         status: "success",
-        result: { m4l_bridge: true, version: "4.0.0" },
+        result: { m4l_bridge: true, version: "3.5.1" },
         id: requestId
     };
     sendResponse(JSON.stringify(response));
@@ -3612,3 +3612,4 @@ function handleCreateArrangementAudioClip(args) {
         sendError("create_arrangement_audio_clip failed: " + safeErrorMessage(e), requestId);
     }
 }
+
