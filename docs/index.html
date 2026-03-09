@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bridge | Natural-language control for Ableton Live</title>
+    <meta
+      name="description"
+      content="Bridge is natural-language control for Ableton Live. Build effect chains, write MIDI, shape sounds, and manage your session without breaking creative flow."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/bridge-mark-Ce-wSOf9.svg" />
+    <script type="module" crossorigin src="/assets/index-BjHwNcy7.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BCuBEXZd.css">
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="Bridge home">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="data:image/svg+xml,%3csvg%20width='160'%20height='160'%20viewBox='0%200%20160%20160'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20d='M79%2028C109.928%2028%20135%2049.49%20135%2076C135%20102.51%20109.928%20124%2079%20124H58L40%20137L45.5%20121.5C32.781%20113.159%2024%2095.677%2024%2076C24%2049.49%2049.072%2028%2080%2028H79Z'%20stroke='%23F3F4EF'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cpath%20d='M67%2096V59L98%2053V91'%20stroke='%23F2A56C'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cellipse%20cx='61'%20cy='97'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2061%2097)'%20/%3e%3cellipse%20cx='92'%20cy='93'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2092%2093)'%20/%3e%3c/svg%3e" alt="" />
+          </span>
+          <span class="brand-text">Bridge</span>
+        </a>
+
+        <nav class="site-nav" aria-label="Primary">
+          <a class="nav-link nav-link-github" href="https://github.com/hidingwill/AbletonBridge" target="_blank" rel="noreferrer">
+            <svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.22 1.84 1.22 1.07 1.82 2.8 1.3 3.49 1 .11-.76.42-1.29.76-1.58-2.67-.3-5.48-1.33-5.48-5.9 0-1.3.47-2.37 1.22-3.21-.12-.3-.53-1.52.12-3.17 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.3-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.87.12 3.17.76.84 1.22 1.91 1.22 3.21 0 4.58-2.81 5.6-5.49 5.9.43.37.82 1.1.82 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"
+              />
+            </svg>
+            <span>GitHub</span>
+          </a>
+          <a class="nav-link nav-link-discord" href="https://discord.gg/xrk3wpwxwT" target="_blank" rel="noreferrer">
+            <svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M20.32 4.37A19.79 19.79 0 0 0 15.39 3a13.7 13.7 0 0 0-.63 1.31 18.3 18.3 0 0 0-5.52 0A13.54 13.54 0 0 0 8.61 3a19.74 19.74 0 0 0-4.94 1.37C.56 9.08-.28 13.67.14 18.2a19.93 19.93 0 0 0 6.06 3.05c.49-.67.93-1.38 1.31-2.14-.72-.27-1.41-.61-2.06-1 .17-.12.34-.24.5-.37 3.97 1.86 8.27 1.86 12.19 0 .17.14.34.26.5.38-.65.38-1.34.72-2.06.99.38.75.82 1.47 1.31 2.13a19.86 19.86 0 0 0 6.06-3.04c.49-5.25-.84-9.8-3.63-13.83ZM8.68 15.44c-1.18 0-2.15-1.08-2.15-2.41 0-1.34.95-2.42 2.15-2.42 1.21 0 2.17 1.09 2.15 2.42 0 1.33-.95 2.41-2.15 2.41Zm6.64 0c-1.18 0-2.15-1.08-2.15-2.41 0-1.34.95-2.42 2.15-2.42 1.21 0 2.17 1.09 2.15 2.42 0 1.33-.94 2.41-2.15 2.41Z"
+              />
+            </svg>
+            <span>Discord</span>
+          </a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero section">
+          <div class="hero-copy">
+            <div class="hero-brand">
+              <span class="hero-mark hero-mark-large" aria-hidden="true">
+                <img src="data:image/svg+xml,%3csvg%20width='160'%20height='160'%20viewBox='0%200%20160%20160'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20d='M79%2028C109.928%2028%20135%2049.49%20135%2076C135%20102.51%20109.928%20124%2079%20124H58L40%20137L45.5%20121.5C32.781%20113.159%2024%2095.677%2024%2076C24%2049.49%2049.072%2028%2080%2028H79Z'%20stroke='%23F3F4EF'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cpath%20d='M67%2096V59L98%2053V91'%20stroke='%23F2A56C'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cellipse%20cx='61'%20cy='97'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2061%2097)'%20/%3e%3cellipse%20cx='92'%20cy='93'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2092%2093)'%20/%3e%3c/svg%3e" alt="" />
+              </span>
+              <div class="hero-brand-copy">
+                <div class="hero-meta">
+                  <p class="eyebrow">Bridge</p>
+                  <span class="beta-badge">Beta</span>
+                </div>
+                <p class="hero-label">For Ableton Live</p>
+              </div>
+            </div>
+            <h1>Natural-language control for Ableton Live.</h1>
+            <p class="hero-subhead">
+              A text interface for Ableton Live. Make parts, build chains, and handle setup
+              without digging through menus.
+            </p>
+
+            <div class="hero-actions">
+              <a class="button button-primary" href="#tutorials">Watch demos</a>
+              <a
+                class="button button-secondary"
+                href="https://github.com/hidingwill/AbletonBridge"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Get Bridge
+              </a>
+            </div>
+
+            <ul class="support-strip" aria-label="Bridge compatibility">
+              <li>Cursor</li>
+              <li>Claude Desktop</li>
+              <li>Claude Code</li>
+              <li>Other MCP clients</li>
+              <li>Max For Live</li>
+            </ul>
+          </div>
+
+          <div class="hero-panel" aria-label="Prompt preview">
+            <div class="panel-topline">
+              <span class="status-dot"></span>
+              <span>Live Session</span>
+              <span class="panel-logo" aria-hidden="true">
+                <img src="data:image/svg+xml,%3csvg%20width='160'%20height='160'%20viewBox='0%200%20160%20160'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20d='M79%2028C109.928%2028%20135%2049.49%20135%2076C135%20102.51%20109.928%20124%2079%20124H58L40%20137L45.5%20121.5C32.781%20113.159%2024%2095.677%2024%2076C24%2049.49%2049.072%2028%2080%2028H79Z'%20stroke='%23F3F4EF'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cpath%20d='M67%2096V59L98%2053V91'%20stroke='%23F2A56C'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cellipse%20cx='61'%20cy='97'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2061%2097)'%20/%3e%3cellipse%20cx='92'%20cy='93'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2092%2093)'%20/%3e%3c/svg%3e" alt="" />
+              </span>
+            </div>
+
+            <div class="prompt-card">
+              <p class="prompt-label">Prompt</p>
+              <p id="hero-prompt" class="prompt-text">
+                Create a Shine On You Crazy Diamond style effect chain for my guitar input.
+              </p>
+            </div>
+
+            <div class="result-grid">
+              <article>
+                <p class="result-label">Action</p>
+                <p id="hero-action-copy">Creates a chain with compression, modulation, delay, reverb, and tone shaping.</p>
+              </article>
+              <article>
+                <p class="result-label">Session impact</p>
+                <p id="hero-impact-copy">Devices load, routing updates, and the chain is ready to play immediately.</p>
+              </article>
+            </div>
+
+            <div class="timeline">
+              <button class="timeline-bar timeline-bar-active" type="button" aria-label="Show tutorial 1"></button>
+              <button class="timeline-bar" type="button" aria-label="Show tutorial 2"></button>
+              <button class="timeline-bar" type="button" aria-label="Show tutorial 3"></button>
+            </div>
+          </div>
+        </section>
+
+        <section id="capabilities" class="section">
+          <div class="section-heading">
+            <h2>Your technical and creative assistant for Ableton Live.</h2>
+            <p>
+              Bridge can write MIDI, build chains, and take care of the annoying setup work.
+            </p>
+          </div>
+
+          <div class="capability-grid">
+            <article class="capability-card">
+              <p class="card-kicker">Create</p>
+              <h3>Turn ideas into parts</h3>
+              <p>
+                Bass lines, stabs, rhythms, progressions.
+              </p>
+            </article>
+
+            <article class="capability-card">
+              <p class="card-kicker">Design</p>
+              <h3>Build and shape sounds</h3>
+              <p>
+                Instruments, effect chains, parameter moves, tone shaping.
+              </p>
+            </article>
+
+            <article class="capability-card">
+              <p class="card-kicker">Control</p>
+              <h3>Handle the session work</h3>
+              <p>
+                Routing, sends, devices, tracks, automation.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="tutorials" class="section">
+          <div class="section-heading">
+            <h2>Examples</h2>
+          </div>
+
+          <div class="tutorial-grid">
+            <article class="tutorial-card is-active" data-carousel-index="0">
+              <div class="video-frame has-video">
+                <video class="demo-video" controls autoplay muted loop playsinline preload="metadata">
+                  <source src="/assets/guitardemo.mp4" type="video/mp4" />
+                </video>
+              </div>
+              <div class="tutorial-copy">
+                <p class="card-kicker">Build An Effect Chain</p>
+                <h3>Prompt a guitar tone in one sentence</h3>
+                <p class="mono tutorial-prompt">
+                  “Bridge, create a spacey lead guitar tone on my Guitar In track.”
+                </p>
+                <p>
+                  Prompt in, tone out.
+                </p>
+              </div>
+            </article>
+
+            <article class="tutorial-card" data-carousel-index="1">
+              <div class="video-frame has-video bassline-frame">
+                <video class="demo-video" controls autoplay muted loop playsinline preload="metadata">
+                  <source src="/assets/bassdemo.mp4" type="video/mp4" />
+                </video>
+              </div>
+              <div class="tutorial-copy">
+                <p class="card-kicker">Compose A Bass Line</p>
+                <h3>Write motion, mode, and feel into the prompt</h3>
+                <p class="mono tutorial-prompt">“Bridge, write a E Dorian funky bass line on the Bass track.”</p>
+                <p>
+                  A quick MIDI idea without breaking flow.
+                </p>
+              </div>
+            </article>
+
+            <article class="tutorial-card" data-carousel-index="2">
+              <div class="video-frame has-video routing-frame">
+                <video class="demo-video" controls autoplay muted loop playsinline preload="metadata">
+                  <source src="/assets/returndemo.mp4" type="video/mp4" />
+                </video>
+              </div>
+              <div class="tutorial-copy">
+                <p class="card-kicker">Handle Session Setup</p>
+                <h3>Offload repetitive production moves</h3>
+                <p class="mono tutorial-prompt">
+                  “Bridge, add Reverb to the Drums channel by sending it to the Reverb return.”
+                </p>
+                <p>
+                  Simple session work, done instantly.
+                </p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="community" class="section community-section">
+          <div class="section-heading">
+            <h2>Try the Beta</h2>
+            <p>Works with Cursor, Claude Desktop, Claude Code, and other MCP clients. Max for Live adds deeper access. ElevenLabs support is optional.</p>
+          </div>
+
+          <div class="community-links-row">
+            <a
+              class="community-card community-link-card"
+              href="https://github.com/hidingwill/AbletonBridge"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span class="card-kicker">GitHub</span>
+              <h3>Source and docs</h3>
+              <p>Browse the repo.</p>
+            </a>
+
+            <a
+              class="community-card community-link-card"
+              href="https://discord.gg/xrk3wpwxwT"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span class="card-kicker">Discord</span>
+              <h3>Community</h3>
+              <p>Join the chat.</p>
+            </a>
+
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="footer-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="data:image/svg+xml,%3csvg%20width='160'%20height='160'%20viewBox='0%200%20160%20160'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20d='M79%2028C109.928%2028%20135%2049.49%20135%2076C135%20102.51%20109.928%20124%2079%20124H58L40%20137L45.5%20121.5C32.781%20113.159%2024%2095.677%2024%2076C24%2049.49%2049.072%2028%2080%2028H79Z'%20stroke='%23F3F4EF'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cpath%20d='M67%2096V59L98%2053V91'%20stroke='%23F2A56C'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20/%3e%3cellipse%20cx='61'%20cy='97'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2061%2097)'%20/%3e%3cellipse%20cx='92'%20cy='93'%20rx='11'%20ry='9.5'%20fill='%23F2A56C'%20transform='rotate(-18%2092%2093)'%20/%3e%3c/svg%3e" alt="" />
+          </span>
+          <div>
+            <p class="footer-title">Bridge</p>
+            <p class="footer-copy">Open source beta for Ableton Live.</p>
+          </div>
+        </div>
+
+        <nav class="footer-links" aria-label="Footer">
+          <a class="nav-link nav-link-github" href="https://github.com/hidingwill/AbletonBridge" target="_blank" rel="noreferrer">
+            <svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.22 1.84 1.22 1.07 1.82 2.8 1.3 3.49 1 .11-.76.42-1.29.76-1.58-2.67-.3-5.48-1.33-5.48-5.9 0-1.3.47-2.37 1.22-3.21-.12-.3-.53-1.52.12-3.17 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.3-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.87.12 3.17.76.84 1.22 1.91 1.22 3.21 0 4.58-2.81 5.6-5.49 5.9.43.37.82 1.1.82 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"
+              />
+            </svg>
+            <span>GitHub</span>
+          </a>
+          <a class="nav-link nav-link-discord" href="https://discord.gg/xrk3wpwxwT" target="_blank" rel="noreferrer">
+            <svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M20.32 4.37A19.79 19.79 0 0 0 15.39 3a13.7 13.7 0 0 0-.63 1.31 18.3 18.3 0 0 0-5.52 0A13.54 13.54 0 0 0 8.61 3a19.74 19.74 0 0 0-4.94 1.37C.56 9.08-.28 13.67.14 18.2a19.93 19.93 0 0 0 6.06 3.05c.49-.67.93-1.38 1.31-2.14-.72-.27-1.41-.61-2.06-1 .17-.12.34-.24.5-.37 3.97 1.86 8.27 1.86 12.19 0 .17.14.34.26.5.38-.65.38-1.34.72-2.06.99.38.75.82 1.47 1.31 2.13a19.86 19.86 0 0 0 6.06-3.04c.49-5.25-.84-9.8-3.63-13.83ZM8.68 15.44c-1.18 0-2.15-1.08-2.15-2.41 0-1.34.95-2.42 2.15-2.42 1.21 0 2.17 1.09 2.15 2.42 0 1.33-.95 2.41-2.15 2.41Zm6.64 0c-1.18 0-2.15-1.08-2.15-2.41 0-1.34.95-2.42 2.15-2.42 1.21 0 2.17 1.09 2.15 2.42 0 1.33-.94 2.41-2.15 2.41Z"
+              />
+            </svg>
+            <span>Discord</span>
+          </a>
+        </nav>
+      </footer>
+    </div>
+
+  </body>
+</html>
