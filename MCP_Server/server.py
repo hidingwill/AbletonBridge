@@ -261,7 +261,9 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 # Create the MCP server instance
 # ===================================================================
 
-mcp = FastMCP("AbletonBridge", lifespan=server_lifespan)
+from MCP_Server.instructions import SERVER_INSTRUCTIONS
+
+mcp = FastMCP("AbletonBridge", instructions=SERVER_INSTRUCTIONS, lifespan=server_lifespan)
 state.mcp_instance = mcp
 
 

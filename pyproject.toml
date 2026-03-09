@@ -1,6 +1,6 @@
 [project]
 name = "ableton-bridge"
-version = "3.4.0"
+version = "3.5.0"
 description = "AbletonBridge — Ableton Live integration through the Model Context Protocol"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,5 +45,5 @@ include = ["MCP_Server*", "elevenlabs_mcp"]
 MCP_Server = ["browser_cache_seed.json"]
 
 [project.urls]
-"Homepage" = "https://github.com/ahujasid/ableton-mcp"
-"Bug Tracker" = "https://github.com/ahujasid/ableton-mcp/issues"
+"Homepage" = "https://github.com/WilliamDeSimone/AbletonBridge"
+"Bug Tracker" = "https://github.com/WilliamDeSimone/AbletonBridge/issues"

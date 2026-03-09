@@ -69,24 +69,18 @@ MCP Server
 
 The server sends OSC commands with typed arguments. The M4L device processes them via the Live Object Model and returns URL-safe base64-encoded JSON responses. Large responses (>1.5KB) are automatically chunked into ~3.6KB UDP packets and reassembled by the server.
 
-## Pre-Built Devices
+## Pre-Built Device
 
-Two pre-built `.amxd` devices are included for different Ableton versions:
+A pre-built `.amxd` device is included:
 
 ```
 M4L_Device/
-├── Suite/
-│   ├── Devicev2.amxd      ← Ableton Live 12 Suite (stable release)
-│   └── m4l_bridge.js
-├── Beta/
-│   ├── Devicev2.amxd      ← Ableton Live 12.x Beta
-│   └── m4l_bridge.js
+├── Devicev2.amxd      ← AbletonBridge M4L Audio Effect
+├── m4l_bridge.js       ← Bridge script (46 OSC commands)
 └── README.md
 ```
 
-**Quick start:** Copy the appropriate folder's `Devicev2.amxd` and `m4l_bridge.js` to your User Library (`User Library/Presets/Audio Effects/Max Audio Effect/`), then drag the device onto any audio track.
-
-Both versions contain the same `m4l_bridge.js` — the `.amxd` patch files differ slightly because they were saved in different Ableton versions.
+**Quick start:** Copy `Devicev2.amxd` and `m4l_bridge.js` to your User Library (`User Library/Presets/Audio Effects/Max Audio Effect/`), then drag the device onto any audio track.
 
 ## Setup Instructions
 
@@ -97,7 +91,7 @@ Both versions contain the same `m4l_bridge.js` — the `.amxd` patch files diffe
 
 ### Using the Pre-Built Device (Recommended)
 
-1. Copy `Devicev2.amxd` and `m4l_bridge.js` from `Suite/` or `Beta/` (matching your Ableton version) to `User Library/Presets/Audio Effects/Max Audio Effect/`
+1. Copy `Devicev2.amxd` and `m4l_bridge.js` from `M4L_Device/` to `User Library/Presets/Audio Effects/Max Audio Effect/`
 2. In Ableton, find the device in your User Library browser
 3. Drag it onto any audio track
 4. The device will immediately start listening on UDP port 9878
@@ -205,7 +199,7 @@ All 41 OSC commands, LiveAPI access, observers, and cross-track meter reading wo
 Use the `m4l_status` MCP tool to check if the bridge is connected:
 
 ```
-m4l_status()  →  "M4L bridge connected (v3.6.0)"
+m4l_status()  →  "M4L bridge connected (v4.0.0)"
 ```
 
 ## Available MCP Tools (When Bridge Is Loaded)

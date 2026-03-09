@@ -40,11 +40,13 @@ MCP Server (modular architecture):
   dashboard/         — html.py, server.py (Starlette)
   tools/             — 14 modules (322 tools)
   prompts.py         — 4 MCP prompt templates
+  instructions.py    — server instructions (cross-tool guidance)
 ```
 
 - **Remote Script** (TCP+UDP) — runs inside Ableton as a Control Surface. TCP:9877 for commands, UDP:9882 for real-time parameter updates at 50+ Hz.
 - **M4L Bridge** (UDP/OSC) — optional Audio Effect device for hidden parameters, rack chain internals, audio analysis, modulation matrices, event monitoring, and more.
 - **ElevenLabs Server** (optional) — 19 tools for AI voice generation, sound effects, voice cloning. Requires `ELEVENLABS_API_KEY`.
+- **MCP Server Instructions** — cross-tool guidance injected into the AI's context on every connection. Covers workflow sequencing, compound tool preferences, M4L fallback logic, and input constraints.
 - **MCP Resources** — `ableton://session`, `ableton://tracks`, `ableton://capabilities` for direct data access.
 - **MCP Prompts** — guided workflows: `create-beat`, `mix-track`, `sound-design`, `arrange-section`.
 - **Web Dashboard** — real-time status, tool metrics, and server logs at `http://127.0.0.1:9880`.
@@ -119,7 +121,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 
 ## Version
 
-**v3.4.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
+**v3.5.1** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 ---
 

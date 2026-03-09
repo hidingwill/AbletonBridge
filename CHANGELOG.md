@@ -4,6 +4,59 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v3.5.1 — 2026-03-09
+
+### MCP Server Instructions
+
+Added server-level instructions that are automatically injected into the AI client's context during MCP initialization. Based on the [MCP server instructions spec](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/), this provides cross-tool guidance that individual tool docstrings cannot capture.
+
+#### What It Does
+
+The instructions teach the AI optimal usage patterns across all 341 tools:
+- **Startup sequencing** — always check `get_server_capabilities` first
+- **Workflow chains** — canonical multi-tool sequences for track creation, MIDI writing, sound design, mixing
+- **Compound tool preference** — use `create_instrument_track`, `batch_set_mixer`, etc. over manual multi-step sequences (3-5x fewer round trips)
+- **Grid notation** — prefer `grid_to_clip` for drum patterns over raw note dicts
+- **M4L fallback logic** — check `m4l_connected` before using hidden parameter / snapshot tools
+- **Input constraints** — note limits (10K), automation limits (500), batch limits, time units (beats)
+- **Browser patterns** — direct name loading vs. search+URI loading
+
+#### Files
+
+- **New:** `MCP_Server/instructions.py` — `SERVER_INSTRUCTIONS` constant (~650 words, model-agnostic)
+- **Modified:** `MCP_Server/server.py` — passes `instructions=SERVER_INSTRUCTIONS` to `FastMCP()` constructor
+
+### Tool count: **322** core + **19 optional** (ElevenLabs) = **341 total** (unchanged)
+
+---
+
+## v3.5.0 — 2026-03-09
+
+### Branding, M4L Device Consolidation & Bug Fixes
+
+Final rename from AbletonMCP to AbletonBridge across all components. Consolidated M4L device variants into a single build, corrected bridge version reporting, and fixed bugs from v3.4.0 concurrency changes.
+
+#### Branding: AbletonMCP → AbletonBridge
+
+- **Full rename** — updated all file headers, log messages, class references, and user-facing strings from "AbletonMCP" / "AbletonMCP Beta" to "AbletonBridge" across the M4L bridge, Remote Script, MCP Server, and documentation
+- **Remote Script** — renamed folder from `AbletonMCP_Remote_Script/` to `AbletonBridge_Remote_Script/`
+- **License** — updated to proprietary license (personal + commercial use, no modification/redistribution)
+- **pyproject.toml** — updated project URLs to `github.com/WilliamDeSimone/AbletonBridge`
+
+#### M4L Device Consolidation
+
+- **Single device** — removed `M4L_Device/Beta/` and `M4L_Device/Suite/` subdirectories; single `Devicev2.amxd` + `m4l_bridge.js` now lives at the `M4L_Device/` root
+- **Bridge version fix** — corrected version reported by bridge from `3.3.0` → `4.0.0` (was set incorrectly during rename; code matches v4.0.0 feature set with all 46 OSC commands)
+
+#### Bug Fixes
+
+- **M4L bridge version mismatch** — `handlePing()` was returning `"3.3.0"` instead of `"4.0.0"`, causing version compatibility warnings on server startup
+- **Bridge log message** — fixed "AbletonBridge Bridge:" → "AbletonBridge M4L Bridge:" in unknown command handler for clearer diagnostics
+
+### Tool count: **322** core + **19 optional** (ElevenLabs) = **341 total** (unchanged)
+
+---
+
 ## v3.4.0 — 2026-03-07
 
 ### Performance & Stability: Concurrency Control
