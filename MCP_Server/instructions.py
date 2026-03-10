@@ -9,59 +9,99 @@ AbletonBridge provides 341 tools for controlling Ableton Live sessions. This gui
 
 ## Startup
 
-Call get_server_capabilities first in every session. It reports connection status, M4L bridge availability, browser cache state, and tool count. Many tools fail silently or return unhelpful errors without a live Ableton connection — checking capabilities first avoids wasted calls.
+Call get_server_capabilities first in every session. It reports ableton_connected, m4l_connected, browser cache state, and tool count. If ableton_connected is false, most tools will fail.
 
-## Workflow Sequencing
+## Compound Tools
 
-Common multi-tool workflows follow these canonical sequences:
-
-- **Track creation**: Use the compound tool create_instrument_track (creates track + loads instrument + names it in one call). For drums, use create_drum_track. Only fall back to the manual sequence (create_midi_track → load_instrument_or_effect → set_track_name) when you need custom control between steps.
-
-- **Writing MIDI**: First ensure a clip exists (create_clip or create_clip_with_notes), then write notes with add_notes_to_clip or grid_to_clip. The clip must exist before notes can be written to it.
-
-- **Sound design**: Call get_device_parameters to discover available parameter names and ranges, then use set_device_parameter to adjust individual values. For batch changes, use batch_set_device_parameters.
-
-- **Mixing**: Start with get_full_session_state for a complete overview of all tracks, volumes, pans, sends, and devices. Use batch_set_mixer for multi-track adjustments in a single call rather than individual set_track_volume/set_track_pan calls.
-
-## Prefer Compound Tools
-
-These workflow tools combine multiple operations into a single call, reducing round-trips 3-5x:
+These combine multiple operations into one call (3-5x fewer round-trips). Prefer them over manual multi-step sequences:
 - create_instrument_track — track + instrument + name + color
-- create_drum_track — MIDI track + Drum Rack + name
+- create_drum_track — MIDI track + Drum Rack + clip + drum pattern (8 styles)
 - create_clip_with_notes — clip creation + note writing
-- batch_set_mixer — volume + pan + send levels for multiple tracks
-- apply_effect_chain — load multiple effects from a template
-- setup_send_return — creates return track + configures sends
+- batch_set_mixer — volume/pan/mute/solo for multiple tracks
+- apply_effect_chain — load multiple effects sequentially
+- setup_send_return — return track + effect + send level mapping
+- get_full_session_state — session + all tracks + returns + scenes in one query
+- save_effect_chain / load_effect_chain — template system. Caveat: load restores devices only; parameters require a separate restore step.
 
-Use these instead of manual multi-step sequences whenever the workflow matches.
+## Track Indexing
+
+Track indices shift after create/delete — call get_all_tracks_info to refresh. Return tracks have their own 0-based index (Send A = return 0, Send B = return 1), separate from regular tracks. The `track_type` parameter ("track", "return", "master") selects which namespace — used by set_mixer, get_device_parameters, and others. Master track has no pan parameter (silently ignored if set).
+
+## Clips & Notes
+
+Session clips are addressed by (track_index, clip_index) where clip_index is the slot row. Arrangement clips live on the timeline — use get_arrangement_clips to list them; create_arrangement_midi_clip (Live 12.1+) / create_arrangement_audio_clip (Live 12.2+) to create them.
+
+A clip must exist before writing notes: create_clip first, then add_notes_to_clip — or use create_clip_with_notes. get_clip_notes with time_span=0 returns the entire clip.
+
+add_notes_extended supports Live 11+ note properties: probability (0.0-1.0 float, NOT percentage), velocity_deviation (-127 to +127 signed).
+
+Time values are always in beats. Session clips: beats from clip start. Arrangement clips: beats from song position 0.
 
 ## Grid Notation
 
-For drum patterns and rhythmic content, prefer grid_to_clip (ASCII grid notation) over add_notes_to_clip with individual note dictionaries. Grid notation is more compact and readable for patterns. Use clip_to_grid to read existing clips as grids. Grid auto-detects drum vs melodic content.
+For drum patterns and rhythmic content, prefer grid_to_clip (ASCII grid notation) over individual note dictionaries. Grid notation is more compact and readable. Use clip_to_grid to read existing clips as grids. Auto-detects drum vs melodic content.
 
-## M4L Bridge (Optional)
+## Device Parameters
 
-Tools prefixed with m4l_*, plus discover_device_params, snapshot_device_state, restore_device_snapshot, and morph_between_snapshots, require the AbletonBridge Max for Live device to be loaded on any track in the Live set. Check the m4l_connected field from get_server_capabilities:
-- If true: full access to hidden parameters, deep device chains, audio analysis, and snapshots.
-- If false: use standard get_device_parameters / set_device_parameter instead. These work with all automatable parameters without M4L.
+get_device_parameters returns exact parameter names and min/max ranges. Use these names exactly — they are case-sensitive. Values outside min/max are silently clamped.
 
-## Input Constraints
+For batch changes, set_device_parameters (pass a JSON dict of name:value pairs) is 3-5x faster than repeated set_device_parameter calls. realtime_set_parameter sends via UDP (fire-and-forget, no confirmation) — use for live filter sweeps and real-time control.
 
-- Notes: max 10,000 per add_notes_to_clip call. Split larger writes across multiple calls. Each note requires {pitch, start_time, duration, velocity} — pitch 0-127, velocity 0-127, duration > 0, start_time ≥ 0.
-- Automation: max 500 points per call. Points auto-reduce if density exceeds thresholds. Each point requires {time, value} where value is 0.0-1.0 normalized.
-- Batch parameters: max 200 per call.
-- Batch tracks: max 50 per batch_set_mixer call.
-- Time values throughout are in beats (1.0 = one quarter note at current tempo).
+VST/AU plugins expose only ~32 automatable parameters by default. Use get_plugin_info for guidance on Configure mode.
 
-## Browser & Loading
+Hidden parameters (via M4L): addressed by parameter_index (int), not name. Index 0 ("Device On") is auto-skipped in batch operations for safety.
 
-load_instrument_or_effect accepts device names directly — "Wavetable", "Operator", "Drift", "Compressor", "EQ Eight", etc. Exact name matching works for all built-in Ableton devices. Use search_browser only when loading user presets, third-party plugins, or items whose exact name is unknown. Browser results return URIs that can be passed to load_browser_item.
+## Mixer
+
+set_mixer unifies track/return/master control via the track_type parameter. Key ranges:
+- volume: 0.0-1.0 (0.85 ≈ 0 dB, not 1.0)
+- pan: -1.0 (L) to 1.0 (R). Master has no pan.
+
+For Split Stereo panning, call set_panning_mode(mode=1) first, then set_split_stereo_pan for independent L/R control.
+
+Routing: always call get_track_routing before set_track_routing — you need the exact display names from Ableton's available routing list.
 
 ## Automation
 
-create_clip_automation writes automation to clip envelopes (Session view). create_track_automation writes to arrangement automation lanes. Both accept a list of {time, value} points. The server automatically reduces point density if too many points are submitted while preserving the curve shape.
+create_clip_automation writes envelopes inside session clips (time = beats from clip start). create_track_automation writes to arrangement timeline lanes (time = beats from song start). Do not confuse them — they target different contexts.
 
-## Snapshots
+Use as few points as possible — Ableton interpolates linearly between breakpoints. A ramp needs only 2 points; a triangle needs 3. Points are auto-reduced if more than 20 are submitted.
 
-snapshot_device_state captures all device parameters (including hidden ones via M4L) into an in-memory store. morph_between_snapshots interpolates between two saved snapshots at a given ratio. list_snapshots shows all stored snapshots. Snapshots exist in server memory only — they do not persist across server restarts.
+create_automation_curve generates shaped envelopes (sine, exponential, s_curve, triangle, sawtooth, etc.). The cycles parameter is cycles per clip length, not per beat. create_step_automation creates held-value steps.
+
+Automation values are in the parameter's native range (usually 0.0-1.0 normalized).
+
+## Browser & Loading
+
+load_instrument_or_effect resolves built-in Ableton device names directly — "Wavetable", "Operator", "Drift", "Compressor", "EQ Eight", etc. Use search_browser only when loading user presets, third-party plugins, or items whose exact name is unknown (results are instant via cached index). Call refresh_browser_cache after installing new packs.
+
+## Creative Tools
+
+Each generative tool (scale_constrained_generate, generate_chord_progression, generate_bass_line, harmonize_melody, quantize_to_scale) takes its own scale_name and root parameters. For consistency across a session, read get_song_scale first and pass its root_note and scale_name to each creative tool call.
+
+Drum pattern tools (generate_euclidean_rhythm, generate_drum_pattern) use standard GM layout: kick=36, snare=38, hihat=42, open_hat=46. Use quantize_to_scale for post-hoc scale correction of melodic output.
+
+## M4L Bridge
+
+Check m4l_connected from get_server_capabilities before calling any M4L tool. If false, use standard get_device_parameters / set_device_parameter instead.
+
+Key M4L subsystems:
+- **Note surgery**: get_clip_notes_with_ids → modify_clip_notes / remove_clip_notes_by_id for in-place, non-destructive editing (Live 11+).
+- **Snapshots**: snapshot_device_state captures all params. morph_between_snapshots interpolates between two snapshots (quantized params snap at the 0.5 midpoint). In-memory only — lost on server restart.
+- **Observation**: observe_property → get_property_changes → stop_observing for event-driven monitoring (~10 ms latency).
+- **Audio analysis**: analyze_track_audio — track_index -1 = M4L device track, -2 = master, 0+ = regular track.
+- **AB compare**: device_ab_compare for preset comparison (Live 12.3+).
+
+## Undo & Safety
+
+Call end_undo_step after a sequence of operations to group them into a single undo action. Create/delete commands (tracks, clips, scenes, devices) are non-idempotent — do not retry on error.
+
+Compound workflow tools are NOT atomic: partial failure (e.g., instrument fails to load) leaves partial state. Snapshots, macros, and parameter maps are in-memory only (lost on restart). Effect chain templates persist to disk.
+
+## Input Constraints
+
+- Notes: max 10,000 per call. Each note: {pitch, start_time, duration, velocity} — pitch 0-127, velocity 1-127, duration > 0, start_time ≥ 0.
+- Automation: max 500 points per call (auto-reduced to preserve shape).
+- Batch parameters: max 200 per call. Batch tracks: max 50.
+- Time values throughout are in beats (1.0 = one quarter note).
 """.strip()

@@ -3612,4 +3612,3 @@ function handleCreateArrangementAudioClip(args) {
         sendError("create_arrangement_audio_clip failed: " + safeErrorMessage(e), requestId);
     }
 }
-

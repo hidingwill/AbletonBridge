@@ -1,4 +1,4 @@
-# AbletonBridge Max for Live Bridge (v3.5.1)
+# AbletonBridge Max for Live Bridge (v4.0.0)
 
 Optional deep Live Object Model (LOM) access that extends the standard AbletonBridge Remote Script. Now an **Audio Effect** device (upgraded from MIDI Effect) — enabling real-time audio analysis via `plugin~`. Adds **43 tools** (46 OSC commands) for:
 
@@ -458,4 +458,3 @@ Key safety: never creates the full base64 string in memory; `.replace()` for URL
 - **Wavetable voice properties** (`unison_mode`, `unison_voice_count`, `filter_routing`, `mono_poly`, `poly_voices`) are read-only — not exposed as DeviceParameters, and `LiveAPI.set()` silently fails. Hard Ableton API limitation.
 - **MSP audio analysis** (RMS/peak/spectrum via `plugin~`) only works for the device's own track. Cross-track analysis uses LOM meters instead (always available for any track).
 - **ASCII-only in responses** — Unicode characters above 127 corrupt Max's `[js]` base64 encoder. All response strings must use ASCII only.
-

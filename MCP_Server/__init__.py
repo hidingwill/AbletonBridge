@@ -3,5 +3,4 @@
 __version__ = "3.5.1"
 
 # Expose key classes and functions for easier imports
-
 from .connections.ableton import AbletonConnection, get_ableton_connection

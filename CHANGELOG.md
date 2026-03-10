@@ -4,6 +4,40 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v3.6.0 — 2026-03-10
+
+### MCP Server Instructions — Expanded
+
+Expanded the `SERVER_INSTRUCTIONS` from ~650 words (9 sections) to ~950 words (13 sections), covering cross-tool patterns that were previously undocumented and caused wasted round-trips or silent errors.
+
+#### New Sections
+
+- **Track Indexing** — indices shift after create/delete, return track numbering, `track_type` parameter semantics ("track"/"return"/"master"), master-has-no-pan gotcha
+- **Device Parameters** — case-sensitive names, batch set 3-5x faster, silent clamping, VST/AU 32-param limit, hidden param indexing (M4L)
+- **Mixer** — `set_mixer` unification, volume 0.85 ≈ 0 dB, pan range, Split Stereo workflow, routing display-name dependency
+- **Creative Tools** — each tool takes its own `scale_name`/`root` params, GM drum layout (kick=36, snare=38, hihat=42), `quantize_to_scale` for post-hoc correction
+- **Undo & Safety** — `end_undo_step` grouping, non-idempotent commands, partial failure in compound tools, persistence semantics
+
+#### Expanded Sections
+
+- **Compound Tools** — added `get_full_session_state`, `save_effect_chain`/`load_effect_chain` with parameter-restore caveat
+- **Clips & Notes** — session vs arrangement clip distinction, `add_notes_extended` probability/velocity_deviation formats, time reference (clip-relative vs song-absolute), Live version gates
+- **Automation** — clip envelope vs arrangement timeline distinction, "use few points" guidance, `create_automation_curve` with cycles-per-clip-length, `create_step_automation`
+- **M4L Bridge** — note surgery workflow, snapshot morphing (quantized snap at 0.5), property observation lifecycle, audio analysis track_index semantics (-1/-2/N), AB compare
+
+#### Removed / Merged
+
+- **Workflow Sequencing** section dissolved — content merged into Compound Tools, Clips & Notes, and other domain-specific sections for better locality
+- **Snapshots** section merged into M4L Bridge (snapshots require M4L)
+
+#### Files
+
+- **Modified:** `MCP_Server/instructions.py` — `SERVER_INSTRUCTIONS` constant rewritten (~950 words, 13 sections, model-agnostic)
+
+### Tool count: **322** core + **19 optional** (ElevenLabs) = **341 total** (unchanged)
+
+---
+
 ## v3.5.1 — 2026-03-09
 
 ### MCP Server Instructions
