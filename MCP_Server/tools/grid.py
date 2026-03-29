@@ -19,26 +19,23 @@ def register_tools(mcp):
         - track_index: The index of the track containing the clip
         - clip_index: The index of the clip slot containing the clip
         """
-        try:
-            from MCP_Server.grid_notation import notes_to_grid
-            _validate_index(track_index, "track_index")
-            _validate_index(clip_index, "clip_index")
-            ableton = get_ableton_connection()
-            result = ableton.send_command("get_clip_notes", {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "start_time": 0.0,
-                "time_span": 0.0,
-                "start_pitch": 0,
-                "pitch_span": 128,
-            })
-            notes = result.get("notes", [])
-            clip_length = result.get("clip_length", 4.0)
-            clip_name = result.get("clip_name", "Unknown")
-            grid = notes_to_grid(notes)
-            return f"Clip: {clip_name} ({clip_length} beats)\n\n{grid}"
-        except ImportError:
-            return "Error: grid_notation module not available"
+        from MCP_Server.grid_notation import notes_to_grid
+        _validate_index(track_index, "track_index")
+        _validate_index(clip_index, "clip_index")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_clip_notes", {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "start_time": 0.0,
+            "time_span": 0.0,
+            "start_pitch": 0,
+            "pitch_span": 128,
+        })
+        notes = result.get("notes", [])
+        clip_length = result.get("clip_length", 4.0)
+        clip_name = result.get("clip_name", "Unknown")
+        grid = notes_to_grid(notes)
+        return f"Clip: {clip_name} ({clip_length} beats)\n\n{grid}"
 
     @mcp.tool()
     @_tool_handler("writing grid to clip")
@@ -89,7 +86,10 @@ def register_tools(mcp):
                 "length": length,
             })
         except Exception as e:
-            logger.debug("create_clip pre-step failed (may already exist): %s", e)
+            if "already has a clip" in str(e).lower() or "clip slot" in str(e).lower():
+                logger.debug("create_clip pre-step: clip already exists, continuing")
+            else:
+                raise
 
         # Clear existing notes if requested
         if clear_existing:

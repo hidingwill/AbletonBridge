@@ -6,7 +6,7 @@ import logging
 import time
 import threading
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from MCP_Server.constants import TIER_0_COMMANDS, TIER_1_COMMANDS, TIER_2_COMMANDS, MODIFYING_COMMANDS
 import MCP_Server.state as state
@@ -139,7 +139,7 @@ class AbletonConnection:
         self._recv_buffer = ""
         return self.connect()
 
-    def send_command(self, command_type: str, params: Dict[str, Any] = None, timeout: float = None) -> Dict[str, Any]:
+    def send_command(self, command_type: str, params: Dict[str, Any] = None, timeout: Optional[float] = None) -> Dict[str, Any]:
         """Send a command to Ableton and return the response.
 
         Includes automatic retry: if the first attempt fails due to a

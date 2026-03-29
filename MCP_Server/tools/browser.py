@@ -6,23 +6,8 @@ from MCP_Server.connections.ableton import get_ableton_connection
 from MCP_Server.connections.m4l import get_m4l_connection
 from MCP_Server.validation import _validate_index, _validate_range
 from MCP_Server.cache.browser import resolve_device_uri, resolve_sample_uri, get_browser_cache, populate_browser_cache
+from MCP_Server.constants import CATEGORY_DISPLAY
 import MCP_Server.state as state
-
-
-# Maps category keys to display names (used by search_browser and get_browser_tree)
-_CATEGORY_DISPLAY = {
-    "instruments": "Instruments",
-    "sounds": "Sounds",
-    "drums": "Drums",
-    "audio_effects": "Audio Effects",
-    "midi_effects": "MIDI Effects",
-    "max_for_live": "Max for Live",
-    "plugins": "Plug-ins",
-    "clips": "Clips",
-    "samples": "Samples",
-    "packs": "Packs",
-    "user_library": "User Library",
-}
 
 
 def register_tools(mcp):
@@ -43,9 +28,9 @@ def register_tools(mcp):
         if cache:
             # Filter categories
             if category_type == "all":
-                show_categories = list(_CATEGORY_DISPLAY.values())
+                show_categories = list(CATEGORY_DISPLAY.values())
             else:
-                show_categories = [_CATEGORY_DISPLAY.get(category_type, category_type)]
+                show_categories = [CATEGORY_DISPLAY.get(category_type, category_type)]
 
             formatted_output = f"Browser tree for '{category_type}':\n\n"
             for cat_display in show_categories:
@@ -153,7 +138,7 @@ def register_tools(mcp):
         query_lower = query.lower()
 
         # Use category index for filtered search (smaller list to scan)
-        filter_display = _CATEGORY_DISPLAY.get(category) if category != "all" else None
+        filter_display = CATEGORY_DISPLAY.get(category) if category != "all" else None
         with state.browser_cache_lock:
             search_list = state.browser_cache_by_category.get(filter_display, cache) if filter_display else cache
 
