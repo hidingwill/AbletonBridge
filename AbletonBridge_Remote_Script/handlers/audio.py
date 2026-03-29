@@ -11,7 +11,7 @@ def _get_audio_clip(song, track_index, clip_index):
     """Validate indices and return the audio clip, or raise."""
     _, clip = get_clip(song, track_index, clip_index)
     if not hasattr(clip, 'is_audio_clip') or not clip.is_audio_clip:
-        raise Exception("Clip is not an audio clip")
+        raise TypeError("Clip is not an audio clip")
     return clip
 
 

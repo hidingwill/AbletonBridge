@@ -4,6 +4,45 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v4.0.0 — 2026-03-29
+
+### Code Quality, Bug Fixes & Version Alignment
+
+Comprehensive code review pass: fixed bugs that could hang the server, eliminated misleading error responses, removed duplicate code, replaced all generic `Exception` raises with specific types, and aligned version numbers across all components.
+
+#### Bug Fixes
+
+- **Unknown OSC command hangs server** — `m4l_bridge.js` now sends an error response for unrecognized commands instead of only logging; prevents the MCP server from blocking indefinitely waiting for a reply
+- **Grid tool error disguised as success** — `clip_to_grid` returned error strings that `_tool_handler` wrapped in `tool_success()`, producing `{"status": "ok", "message": "Error: ..."}`. Now raises `ImportError` so the decorator returns a proper `tool_error()` response
+- **Grid clip creation swallows real errors** — `grid_to_clip` caught all exceptions when creating clips, hiding genuine failures (e.g. connection lost). Now only suppresses "clip already exists" errors and re-raises everything else
+
+#### Code Quality
+
+- **Version alignment** — `pyproject.toml`, `MCP_Server/__init__.py`, and `M4L_Device/m4l_bridge.js` all report `4.0.0` consistently
+- **Removed duplicate `_CATEGORY_DISPLAY`** — `MCP_Server/tools/browser.py` now imports `CATEGORY_DISPLAY` from `constants.py` instead of maintaining its own copy
+- **Fixed `Optional` type hint** — `AbletonConnection.send_command()` timeout parameter now correctly typed as `Optional[float]`
+- **Removed redundant imports** — eliminated 5 function-level re-imports in `handlers/browser.py` (2) and `handlers/mixer.py` (3); `mixer.py` now imports `devices` at module level
+- **Specific exception types** — replaced 50+ bare `raise Exception(...)` calls across all Remote Script handlers with appropriate types:
+  - `TypeError` for wrong device/clip/track types (e.g. "not a Drum Rack", "not a MIDI clip")
+  - `ValueError` for invalid state (e.g. "no clip in slot", "track cannot be armed")
+  - `RuntimeError` for missing features (e.g. "requires Live 12+", "not available")
+  - `NotImplementedError` for unsupported operations (e.g. "does not support clear()")
+- **Added debug logging** — automation envelope sampling failures in `get_clip_automation()` now log via `ctrl.log_message()` instead of silently dropping data points
+
+#### Files Modified
+
+- `pyproject.toml` — version 3.5.0 → 4.0.0
+- `MCP_Server/__init__.py` — version 3.5.1 → 4.0.0
+- `M4L_Device/m4l_bridge.js` — version 3.5.1 → 4.0.0, added `sendError()` for unknown commands
+- `MCP_Server/tools/grid.py` — error handling fixes
+- `MCP_Server/tools/browser.py` — removed duplicate dict, imported from constants
+- `MCP_Server/connections/ableton.py` — `Optional[float]` type hint
+- `AbletonBridge_Remote_Script/handlers/*.py` — exception types + imports (arrangement, audio, automation, browser, clips, devices, midi, mixer, session, tracks, _helpers)
+
+### Tool count: **322** core + **19 optional** (ElevenLabs) = **341 total** (unchanged)
+
+---
+
 ## v3.6.0 — 2026-03-10
 
 ### MCP Server Instructions — Expanded

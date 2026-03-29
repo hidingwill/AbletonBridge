@@ -657,7 +657,6 @@ def get_user_folders(song, ctrl=None):
 
 def get_device_presets(song, track_index, device_index, track_type="track", ctrl=None):
     """Get available presets for a device by navigating the browser."""
-    from ._helpers import get_track
     track = get_track(song, track_index, track_type)
 
     if device_index < 0 or device_index >= len(track.devices):
@@ -727,7 +726,6 @@ def get_device_presets(song, track_index, device_index, track_type="track", ctrl
 
 def load_device_preset(song, track_index, device_index, preset_uri, track_type="track", ctrl=None):
     """Load a preset onto a device using hot-swap."""
-    from ._helpers import get_track
     track = get_track(song, track_index, track_type)
 
     if device_index < 0 or device_index >= len(track.devices):

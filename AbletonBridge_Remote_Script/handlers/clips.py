@@ -12,7 +12,7 @@ def create_clip(song, track_index, clip_index, length, ctrl=None):
     try:
         track, clip_slot = get_clip_slot(song, track_index, clip_index)
         if clip_slot.has_clip:
-            raise Exception("Clip slot already has a clip")
+            raise ValueError("Clip slot already has a clip")
         length = float(length)
         if length <= 0:
             raise ValueError("Clip length must be positive, got {0}".format(length))
@@ -104,7 +104,7 @@ def fire_clip(song, track_index, clip_index, ctrl=None):
     try:
         _, clip_slot = get_clip_slot(song, track_index, clip_index)
         if not clip_slot.has_clip:
-            raise Exception("No clip in slot")
+            raise ValueError("No clip in slot")
         clip_slot.fire()
         return {"fired": True}
     except Exception as e:
@@ -130,7 +130,7 @@ def delete_clip(song, track_index, clip_index, ctrl=None):
     try:
         _, clip_slot = get_clip_slot(song, track_index, clip_index)
         if not clip_slot.has_clip:
-            raise Exception("No clip in slot")
+            raise ValueError("No clip in slot")
         clip_name = clip_slot.clip.name
         clip_slot.delete_clip()
         return {
@@ -217,9 +217,9 @@ def duplicate_clip(song, track_index, clip_index, target_clip_index, ctrl=None):
         source_slot = track.clip_slots[clip_index]
         target_slot = track.clip_slots[target_clip_index]
         if not source_slot.has_clip:
-            raise Exception("No clip in source slot")
+            raise ValueError("No clip in source slot")
         if target_slot.has_clip:
-            raise Exception("Target slot already has a clip")
+            raise ValueError("Target slot already has a clip")
         source_slot.duplicate_clip_to(target_slot)
         return {
             "duplicated": True,
@@ -304,7 +304,7 @@ def crop_clip(song, track_index, clip_index, ctrl=None):
     try:
         _, clip = get_clip(song, track_index, clip_index)
         if not hasattr(clip, 'crop'):
-            raise Exception("clip.crop() not available in this Live version")
+            raise RuntimeError("clip.crop() not available in this Live version")
         clip.crop()
         return {
             "cropped": True,
@@ -322,7 +322,7 @@ def duplicate_clip_loop(song, track_index, clip_index, ctrl=None):
     try:
         _, clip = get_clip(song, track_index, clip_index)
         if not hasattr(clip, 'duplicate_loop'):
-            raise Exception("clip.duplicate_loop() not available in this Live version")
+            raise RuntimeError("clip.duplicate_loop() not available in this Live version")
         old_length = clip.length
         clip.duplicate_loop()
         return {
@@ -498,7 +498,7 @@ def audio_to_midi(song, track_index, clip_index, conversion_type, ctrl=None):
         try:
             from Live.Conversions import audio_to_midi_clip, AudioToMidiType
         except ImportError as imp_err:
-            raise Exception(
+            raise RuntimeError(
                 "Audio-to-MIDI conversion requires Live 12+ "
                 "(failed to import Live.Conversions: {0})".format(imp_err)
             ) from imp_err
@@ -831,7 +831,7 @@ def create_arrangement_midi_clip(song, track_index, time, length, ctrl=None):
         if not track.has_midi_input:
             raise ValueError("Track {0} is not a MIDI track".format(track_index))
         if not hasattr(track, 'create_midi_clip'):
-            raise Exception("create_midi_clip requires Live 12.1+")
+            raise RuntimeError("create_midi_clip requires Live 12.1+")
         clip = track.create_midi_clip(float(time), float(length))
         return {
             "created": True,
@@ -853,7 +853,7 @@ def create_arrangement_audio_clip(song, track_index, time, length, ctrl=None):
         if not track.has_audio_input:
             raise ValueError("Track {0} is not an audio track".format(track_index))
         if not hasattr(track, 'create_audio_clip'):
-            raise Exception("create_audio_clip requires Live 12.2+")
+            raise RuntimeError("create_audio_clip requires Live 12.2+")
         clip = track.create_audio_clip(float(time), float(length))
         return {
             "created": True,
@@ -1045,7 +1045,7 @@ def get_selected_notes(song, track_index, clip_index, ctrl=None):
                         "mute": note[4] if len(note) > 4 else False,
                     })
         else:
-            raise Exception("Clip does not support get_selected_notes")
+            raise RuntimeError("Clip does not support get_selected_notes")
 
         return {
             "track_index": track_index,

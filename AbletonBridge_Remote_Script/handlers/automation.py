@@ -49,7 +49,7 @@ def create_clip_automation(song, track_index, clip_index, parameter_name, automa
             if hasattr(clip, 'create_automation_envelope'):
                 envelope = clip.create_automation_envelope(param)
             else:
-                raise Exception("Clip does not support automation envelopes")
+                raise RuntimeError("Clip does not support automation envelopes")
         else:
             envelope = clip.automation_envelope(param)
 
@@ -57,7 +57,7 @@ def create_clip_automation(song, track_index, clip_index, parameter_name, automa
             if hasattr(clip, 'create_automation_envelope'):
                 envelope = clip.create_automation_envelope(param)
             if envelope is None:
-                raise Exception("Could not get automation envelope for parameter '{0}'".format(parameter_name))
+                raise RuntimeError("Could not get automation envelope for parameter '{0}'".format(parameter_name))
 
         # Clear existing automation so we start with a clean envelope
         if hasattr(envelope, 'clear'):
@@ -116,8 +116,9 @@ def get_clip_automation(song, track_index, clip_index, parameter_name, ctrl=None
             try:
                 val = envelope.value_at_time(t)
                 points.append({"time": round(t, 4), "value": round(val, 4)})
-            except Exception:
-                pass
+            except Exception as e:
+                if ctrl:
+                    ctrl.log_message("Automation sample at t={0} failed: {1}".format(round(t, 4), e))
 
         return {
             "has_automation": True,
@@ -142,7 +143,7 @@ def clear_clip_automation(song, track_index, clip_index, parameter_name, ctrl=No
         param = _find_parameter(song, track_index, parameter_name)
 
         if not hasattr(clip, 'automation_envelope'):
-            raise Exception("Clip does not support automation envelopes")
+            raise RuntimeError("Clip does not support automation envelopes")
 
         envelope = clip.automation_envelope(param)
         if envelope is None:
@@ -152,7 +153,7 @@ def clear_clip_automation(song, track_index, clip_index, parameter_name, ctrl=No
             envelope.clear()
             return {"cleared": True, "parameter": parameter_name}
         else:
-            raise Exception("Envelope does not support clear()")
+            raise NotImplementedError("Envelope does not support clear()")
     except Exception as e:
         if ctrl:
             ctrl.log_message("Error clearing clip automation: " + str(e))
@@ -224,13 +225,13 @@ def create_track_automation(song, track_index, parameter_name, automation_points
         # Find an arrangement clip that covers the automation time range.
         # arrangement_clips() is available on tracks in Live 11+.
         if not hasattr(track, "arrangement_clips"):
-            raise Exception(
+            raise RuntimeError(
                 "Arrangement automation requires Live 11+ (track.arrangement_clips not available)"
             )
 
         arr_clips = list(track.arrangement_clips)
         if not arr_clips:
-            raise Exception(
+            raise ValueError(
                 "No arrangement clips on track {0} — record or place a clip first".format(track_index)
             )
 
@@ -278,7 +279,7 @@ def create_track_automation(song, track_index, parameter_name, automation_points
         if envelope is None and hasattr(target_clip, "create_automation_envelope"):
             envelope = target_clip.create_automation_envelope(parameter)
         if envelope is None:
-            raise Exception(
+            raise RuntimeError(
                 "Could not get automation envelope for '{0}' on arrangement clip".format(parameter_name)
             )
 
@@ -320,13 +321,13 @@ def clear_track_automation(song, track_index, parameter_name, start_time, end_ti
             raise ValueError(msg)
 
         if not hasattr(track, "arrangement_clips"):
-            raise Exception(
+            raise RuntimeError(
                 "Arrangement automation requires Live 11+ (track.arrangement_clips not available)"
             )
 
         arr_clips = list(track.arrangement_clips)
         if not arr_clips:
-            raise Exception(
+            raise ValueError(
                 "No arrangement clips on track {0}".format(track_index)
             )
 
@@ -448,7 +449,7 @@ def clear_clip_envelope(song, track_index, clip_index, parameter_name, ctrl=None
         param = _find_parameter(song, track_index, parameter_name)
 
         if not hasattr(clip, 'clear_envelope'):
-            raise Exception("Clip does not support clear_envelope()")
+            raise NotImplementedError("Clip does not support clear_envelope()")
 
         clip.clear_envelope(param)
         return {"cleared": True, "parameter": parameter_name, "track_index": track_index, "clip_index": clip_index}
@@ -464,7 +465,7 @@ def clear_all_clip_envelopes(song, track_index, clip_index, ctrl=None):
         _, clip = get_clip(song, track_index, clip_index)
 
         if not hasattr(clip, 'clear_all_envelopes'):
-            raise Exception("Clip does not support clear_all_envelopes()")
+            raise NotImplementedError("Clip does not support clear_all_envelopes()")
 
         clip.clear_all_envelopes()
         return {"cleared_all": True, "track_index": track_index, "clip_index": clip_index, "clip_name": clip.name}
@@ -481,7 +482,7 @@ def get_clip_automation_value(song, track_index, clip_index, parameter_name, tim
         param = _find_parameter(song, track_index, parameter_name)
 
         if not hasattr(clip, 'automation_envelope'):
-            raise Exception("Clip does not support automation envelopes")
+            raise RuntimeError("Clip does not support automation envelopes")
 
         envelope = clip.automation_envelope(param)
         if envelope is None:
@@ -527,8 +528,9 @@ def get_clip_automation_hires(song, track_index, clip_index, parameter_name, sam
             try:
                 val = envelope.value_at_time(t)
                 points.append({"time": round(t, 4), "value": round(val, 4)})
-            except Exception:
-                pass
+            except Exception as e:
+                if ctrl:
+                    ctrl.log_message("Automation sample at t={0} failed: {1}".format(round(t, 4), e))
 
         return {
             "has_automation": True,
@@ -560,7 +562,7 @@ def create_step_automation(song, track_index, clip_index, parameter_name, steps,
             if hasattr(clip, 'create_automation_envelope'):
                 envelope = clip.create_automation_envelope(param)
             else:
-                raise Exception("Clip does not support automation envelopes")
+                raise RuntimeError("Clip does not support automation envelopes")
         else:
             envelope = clip.automation_envelope(param)
 
@@ -568,7 +570,7 @@ def create_step_automation(song, track_index, clip_index, parameter_name, steps,
             if hasattr(clip, 'create_automation_envelope'):
                 envelope = clip.create_automation_envelope(param)
             if envelope is None:
-                raise Exception("Could not get automation envelope for parameter '{0}'".format(parameter_name))
+                raise RuntimeError("Could not get automation envelope for parameter '{0}'".format(parameter_name))
 
         if hasattr(envelope, 'clear'):
             try:

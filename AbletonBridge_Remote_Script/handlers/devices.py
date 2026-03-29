@@ -367,7 +367,7 @@ def get_macro_values(song, track_index, device_index, track_type="track", ctrl=N
     try:
         _track, device = _resolve_device(song, track_index, device_index, track_type)
         if not hasattr(device, "macros_mapped"):
-            raise Exception("Device is not a rack (no macros)")
+            raise TypeError("Device is not a rack (no macros)")
 
         macro_count = getattr(device, "visible_macro_count", 8)
         macros = []
@@ -401,14 +401,14 @@ def set_macro_value(song, track_index, device_index, macro_index, value, track_t
     try:
         _track, device = _resolve_device(song, track_index, device_index, track_type)
         if not hasattr(device, "macros_mapped"):
-            raise Exception("Device is not a rack (no macros)")
+            raise TypeError("Device is not a rack (no macros)")
         macro_count = getattr(device, "visible_macro_count", 8)
         if macro_index < 0 or macro_index >= macro_count:
             raise IndexError("Macro index must be 0-{0}".format(macro_count - 1))
 
         param_index = macro_index + 1
         if param_index >= len(device.parameters):
-            raise Exception("Macro {0} not available on this device".format(macro_index + 1))
+            raise ValueError("Macro {0} not available on this device".format(macro_index + 1))
 
         macro_param = device.parameters[param_index]
         macro_param.value = max(macro_param.min, min(macro_param.max, value))
@@ -436,7 +436,7 @@ def _get_drum_rack(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if not device.can_have_drum_pads:
-        raise Exception("Device '{0}' is not a Drum Rack".format(device.name))
+        raise TypeError("Device '{0}' is not a Drum Rack".format(device.name))
     return device
 
 
@@ -505,7 +505,7 @@ def copy_drum_pad(song, track_index, device_index, source_note, dest_note, track
         source_note = int(source_note)
         dest_note = int(dest_note)
         if not hasattr(device, 'copy_pad'):
-            raise Exception("copy_pad not available in this Live version")
+            raise RuntimeError("copy_pad not available in this Live version")
         device.copy_pad(source_note, dest_note)
         src_name = ""
         dst_name = ""
@@ -537,7 +537,7 @@ def _get_rack_device(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if not device.can_have_chains:
-        raise Exception("Device '{0}' is not a Rack".format(device.name))
+        raise TypeError("Device '{0}' is not a Rack".format(device.name))
     return device
 
 
@@ -610,7 +610,7 @@ def sliced_simpler_to_drum_rack(song, track_index, device_index, track_type="tra
         try:
             from Live.Conversions import sliced_simpler_to_drum_rack as _convert
         except ImportError:
-            raise Exception("sliced_simpler_to_drum_rack requires Live 12+") from None
+            raise RuntimeError("sliced_simpler_to_drum_rack requires Live 12+") from None
         device_name = device.name
         _convert(song, device)
         return {
@@ -634,7 +634,7 @@ def _get_compressor_device(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if "compressor" not in device.class_name.lower():
-        raise Exception("Device '{0}' is not a Compressor (class: {1})".format(
+        raise TypeError("Device '{0}' is not a Compressor (class: {1})".format(
             device.name, device.class_name))
     return device
 
@@ -729,7 +729,7 @@ def set_compressor_sidechain(song, track_index, device_index,
         device = _get_compressor_device(song, track_index, device_index, track_type)
         sidechain_io = _get_sidechain_io(device)
         if sidechain_io is None:
-            raise Exception(
+            raise RuntimeError(
                 "Cannot access sidechain routing on '{0}'. "
                 "The device does not expose input_routings (DeviceIO).".format(device.name))
         changes = {}
@@ -771,7 +771,7 @@ def _get_eq8_device(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if "eq8" not in device.class_name.lower():
-        raise Exception("Device '{0}' is not an EQ Eight (class: {1})".format(
+        raise TypeError("Device '{0}' is not an EQ Eight (class: {1})".format(
             device.name, device.class_name))
     return device
 
@@ -858,7 +858,7 @@ def _get_hybrid_reverb_device(song, track_index, device_index, track_type="track
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if "hybrid" not in device.class_name.lower():
-        raise Exception("Device '{0}' is not a Hybrid Reverb (class: {1})".format(
+        raise TypeError("Device '{0}' is not a Hybrid Reverb (class: {1})".format(
             device.name, device.class_name))
     return device
 
@@ -958,7 +958,7 @@ def _get_transmute_device(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if "transmute" not in device.class_name.lower():
-        raise Exception("Device '{0}' is not a Transmute (class: {1})".format(
+        raise TypeError("Device '{0}' is not a Transmute (class: {1})".format(
             device.name, device.class_name))
     return device
 
@@ -1053,7 +1053,7 @@ def _get_simpler_device(song, track_index, device_index, track_type="track"):
         raise IndexError("Device index out of range")
     device = track.devices[device_index]
     if "simpler" not in device.class_name.lower():
-        raise Exception("Device '{0}' is not a Simpler (class: {1})".format(
+        raise TypeError("Device '{0}' is not a Simpler (class: {1})".format(
             device.name, device.class_name))
     return device
 
@@ -1302,7 +1302,7 @@ def manage_sample_slices(song, track_index, device_index, action,
         device = _get_simpler_device(song, track_index, device_index, track_type)
         sample = getattr(device, "sample", None)
         if sample is None:
-            raise Exception("No sample loaded in Simpler '{0}'".format(device.name))
+            raise ValueError("No sample loaded in Simpler '{0}'".format(device.name))
         if action == "insert":
             if slice_time is None:
                 raise ValueError("slice_time is required for insert")
@@ -1455,7 +1455,7 @@ def insert_chain(song, track_index, device_index, index=0, track_type="track", c
     try:
         device = _get_rack_device(song, track_index, device_index, track_type)
         if not hasattr(device, 'insert_chain'):
-            raise Exception("insert_chain requires Live 12.3+")
+            raise RuntimeError("insert_chain requires Live 12.3+")
         device.insert_chain(int(index))
         return {
             "device_name": device.name,
@@ -1479,7 +1479,7 @@ def chain_insert_device(song, track_index, device_index, chain_index,
                 chain_index, len(chains)))
         chain = chains[chain_index]
         if not hasattr(chain, 'insert_device'):
-            raise Exception("chain.insert_device requires Live 12.3+")
+            raise RuntimeError("chain.insert_device requires Live 12.3+")
         if target_index is not None:
             chain.insert_device(str(device_name), int(target_index))
         else:

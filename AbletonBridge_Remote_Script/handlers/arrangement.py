@@ -11,7 +11,7 @@ def _get_arrangement_clip(song, track_index, clip_index_in_arrangement, ctrl=Non
     """Get an arrangement clip by its index in the arrangement_clips list."""
     track = get_track(song, track_index)
     if not hasattr(track, "arrangement_clips"):
-        raise Exception("Track does not have arrangement clips")
+        raise RuntimeError("Track does not have arrangement clips")
     arr_clips = list(track.arrangement_clips)
     if clip_index_in_arrangement < 0 or clip_index_in_arrangement >= len(arr_clips):
         raise IndexError("Arrangement clip index {0} out of range (track has {1} arrangement clips)".format(
@@ -25,7 +25,7 @@ def duplicate_clip_to_arrangement(song, track_index, clip_index, time, ctrl=None
         track, clip = get_clip(song, track_index, clip_index)
 
         if not hasattr(track, 'duplicate_clip_to_arrangement'):
-            raise Exception("duplicate_clip_to_arrangement requires Live 11 or later")
+            raise RuntimeError("duplicate_clip_to_arrangement requires Live 11 or later")
 
         time = max(0.0, float(time))
         track.duplicate_clip_to_arrangement(clip, time)
@@ -48,7 +48,7 @@ def get_arrangement_clips(song, track_index, ctrl=None):
         track = get_track(song, track_index)
 
         if not hasattr(track, "arrangement_clips"):
-            raise Exception(
+            raise RuntimeError(
                 "Track does not have arrangement clips "
                 "(may be a group track or return track)"
             )

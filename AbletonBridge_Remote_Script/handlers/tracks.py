@@ -249,7 +249,7 @@ def arm_track(song, track_index, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not track.can_be_armed:
-            raise Exception("Track cannot be armed (may be a group track or lack input)")
+            raise ValueError("Track cannot be armed (may be a group track or lack input)")
         track.arm = True
         return {
             "track_index": track_index,
@@ -438,7 +438,7 @@ def create_midi_track_with_simpler(song, track_index, clip_index, ctrl=None):
         try:
             from Live.Conversions import create_midi_track_with_simpler as _create
         except ImportError as e:
-            raise Exception("create_midi_track_with_simpler requires Live 12+") from e
+            raise RuntimeError("create_midi_track_with_simpler requires Live 12+") from e
         _create(song, clip)
         return {
             "created": True,
@@ -501,7 +501,7 @@ def set_track_fold(song, track_index, fold_state, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not track.is_foldable:
-            raise Exception("Track '{0}' is not a group track (not foldable)".format(track.name))
+            raise TypeError("Track '{0}' is not a group track (not foldable)".format(track.name))
         track.fold_state = bool(fold_state)
         return {
             "track_index": track_index,
@@ -720,7 +720,7 @@ def jump_in_running_session_clip(song, track_index, amount, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not hasattr(track, 'jump_in_running_session_clip'):
-            raise Exception("jump_in_running_session_clip not available")
+            raise RuntimeError("jump_in_running_session_clip not available")
         track.jump_in_running_session_clip(float(amount))
         return {
             "track_index": track_index,
@@ -738,7 +738,7 @@ def get_track_data(song, track_index, key, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not hasattr(track, 'get_data'):
-            raise Exception("Track persistent data not available (requires Live 12+)")
+            raise RuntimeError("Track persistent data not available (requires Live 12+)")
         value = track.get_data(str(key), "")
         return {
             "track_index": track_index,
@@ -756,7 +756,7 @@ def set_track_data(song, track_index, key, value, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not hasattr(track, 'set_data'):
-            raise Exception("Track persistent data not available (requires Live 12+)")
+            raise RuntimeError("Track persistent data not available (requires Live 12+)")
         track.set_data(str(key), str(value))
         return {
             "track_index": track_index,
@@ -778,7 +778,7 @@ def set_implicit_arm(song, track_index, enabled, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not hasattr(track, 'implicit_arm'):
-            raise Exception("implicit_arm not available on this track")
+            raise RuntimeError("implicit_arm not available on this track")
         track.implicit_arm = bool(enabled)
         return {
             "track_index": track_index,

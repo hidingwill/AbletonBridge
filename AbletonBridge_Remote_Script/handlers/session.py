@@ -723,7 +723,7 @@ def set_groove_settings(song, groove_amount=None, groove_index=None,
         if groove_index is not None:
             pool = getattr(song, "groove_pool", None)
             if pool is None or not hasattr(pool, "grooves"):
-                raise Exception("Groove pool not available")
+                raise RuntimeError("Groove pool not available")
             grooves = list(pool.grooves)
             groove_index = int(groove_index)
             if groove_index < 0 or groove_index >= len(grooves):

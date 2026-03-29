@@ -1,6 +1,6 @@
 [project]
 name = "ableton-bridge"
-version = "3.5.0"
+version = "4.0.0"
 description = "AbletonBridge — Ableton Live integration through the Model Context Protocol"
 readme = "README.md"
 requires-python = ">=3.10"

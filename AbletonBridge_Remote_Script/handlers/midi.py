@@ -407,7 +407,7 @@ def capture_midi(song, ctrl=None):
     """Capture recently played MIDI."""
     try:
         if not hasattr(song, "capture_midi"):
-            raise Exception("Capture MIDI is not available (requires Live 11 or later)")
+            raise RuntimeError("Capture MIDI is not available (requires Live 11 or later)")
         song.capture_midi()
         return {"captured": True}
     except Exception as e:
@@ -449,5 +449,5 @@ def _get_midi_clip(song, track_index, clip_index):
     """Get a MIDI clip with validation."""
     _, clip = get_clip(song, track_index, clip_index)
     if not hasattr(clip, 'get_notes'):
-        raise Exception("Clip is not a MIDI clip")
+        raise TypeError("Clip is not a MIDI clip")
     return clip

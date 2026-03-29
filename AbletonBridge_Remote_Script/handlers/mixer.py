@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 from ._helpers import get_track
+from . import devices as dev_mod
 
 
 def set_track_volume(song, track_index, volume, ctrl=None):
@@ -61,7 +62,7 @@ def set_track_arm(song, track_index, arm, ctrl=None):
     try:
         track = get_track(song, track_index)
         if not track.can_be_armed:
-            raise Exception("Track cannot be armed (group track or no input)")
+            raise ValueError("Track cannot be armed (group track or no input)")
         track.arm = bool(arm)
         return {"track_index": track_index, "arm": track.arm}
     except Exception as e:
@@ -296,7 +297,6 @@ def set_split_stereo_pan(song, track_index, left=None, right=None, ctrl=None):
 def get_master_track_info(song, ctrl=None):
     """Get detailed information about the master track."""
     try:
-        from . import devices as dev_mod
         master = song.master_track
         devices = []
         for device_index, device in enumerate(master.devices):
@@ -360,7 +360,6 @@ def get_scenes(song, ctrl=None):
 def get_return_tracks(song, ctrl=None):
     """Get information about all return tracks."""
     try:
-        from . import devices as dev_mod
         return_tracks = []
         for i, track in enumerate(song.return_tracks):
             devices = []
@@ -398,7 +397,6 @@ def get_return_tracks(song, ctrl=None):
 def get_return_track_info(song, return_track_index, ctrl=None):
     """Get detailed information about a specific return track."""
     try:
-        from . import devices as dev_mod
         track = get_track(song, return_track_index, "return")
         devices = []
         for device_index, device in enumerate(track.devices):

@@ -57,7 +57,7 @@ def get_clip(song, track_index, clip_index, track_type="track"):
     """
     track, slot = get_clip_slot(song, track_index, clip_index, track_type)
     if not slot.has_clip:
-        raise Exception("No clip in slot (track={0}, clip={1})".format(track_index, clip_index))
+        raise ValueError("No clip in slot (track={0}, clip={1})".format(track_index, clip_index))
     return track, slot.clip
 
 

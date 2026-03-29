@@ -121,7 +121,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 
 ## Version
 
-**v3.5.1** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
+**v4.0.0** — see [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 ---
 
