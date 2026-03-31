@@ -19,7 +19,7 @@ NON_IDEMPOTENT_COMMANDS = frozenset([
     "create_midi_track", "create_audio_track", "create_clip",
     "create_return_track", "create_scene", "delete_track",
     "delete_clip", "delete_scene", "delete_device",
-    "duplicate_track", "duplicate_clip", "add_notes_to_clip",
+    "duplicate_track", "duplicate_clip", "duplicate_scene", "add_notes_to_clip",
     "add_notes_extended", "delete_return_track",
 ])
 

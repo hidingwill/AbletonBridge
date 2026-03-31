@@ -729,3 +729,17 @@ def register_tools(mcp):
         ableton = get_ableton_connection()
         result = ableton.send_command("get_highlighted_clip_slot", {})
         return json.dumps(result)
+
+    @mcp.tool()
+    @_tool_handler("setting playback position")
+    def set_playback_position(ctx: Context, position: float) -> str:
+        """Jump the playback position to a specific beat in the arrangement.
+
+        Parameters:
+        - position: The target position in beats (e.g. 0.0 = bar 1, 4.0 = bar 2 in 4/4)
+        """
+        if not isinstance(position, (int, float)) or position < 0:
+            raise ValueError("position must be a non-negative number")
+        ableton = get_ableton_connection()
+        ableton.send_command("set_playback_position", {"position": position})
+        return f"Set playback position to beat {position}"

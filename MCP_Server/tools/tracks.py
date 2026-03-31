@@ -433,5 +433,25 @@ def register_tools(mcp):
         name = result.get("selected_track", "?")
         return f"Selected {track_type} track: '{name}'"
 
+    @mcp.tool()
+    @_tool_handler("setting implicit arm")
+    def set_implicit_arm(ctx: Context, track_index: int, enabled: bool) -> str:
+        """Enable or disable implicit arming for a track.
+
+        When enabled, the track auto-arms when selected — useful for recording workflows.
+
+        Parameters:
+        - track_index: The index of the track (0-based)
+        - enabled: True to enable implicit arm, False to disable
+        """
+        _validate_index(track_index, "track_index")
+        ableton = get_ableton_connection()
+        ableton.send_command("set_implicit_arm", {
+            "track_index": track_index,
+            "enabled": enabled,
+        })
+        state_str = "enabled" if enabled else "disabled"
+        return f"Implicit arm {state_str} for track {track_index}"
+
     # NOTE: select_device_in_view, get_selected_parameter, select_instrument
     # are registered in tools/devices.py (their canonical home)
