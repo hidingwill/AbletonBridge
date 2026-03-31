@@ -43,6 +43,43 @@ Comprehensive code review pass: fixed bugs that could hang the server, eliminate
 
 ---
 
+## v4.0.0-b — 2026-03-31
+
+### New Tools: Scene Management, Playback Position, Implicit Arm
+
+Added 12 new MCP tools that wrap existing Remote Script handlers that previously had no MCP tool exposure.
+
+#### Scene Management (10 new tools — `MCP_Server/tools/scenes.py`)
+
+- `create_scene` — create a new scene at a given index (or at end)
+- `delete_scene` — delete a scene by index
+- `duplicate_scene` — duplicate a scene (inserts copy below)
+- `fire_scene` — launch all clips in a scene row
+- `fire_scene_as_selected` — fire a scene without moving the selection highlight
+- `set_scene_name` — rename a scene
+- `set_scene_color` — set scene color (0-69)
+- `set_scene_tempo` — set or clear a scene's tempo override (20-999 BPM, or 0 to clear)
+- `get_scene_follow_actions` — read follow action settings for a scene
+- `set_scene_follow_actions` — configure follow actions (action types, probability, time, enabled, linked)
+
+#### Session (1 new tool — `MCP_Server/tools/session.py`)
+
+- `set_playback_position` — jump to a specific beat position in the arrangement
+
+#### Tracks (1 new tool — `MCP_Server/tools/tracks.py`)
+
+- `set_implicit_arm` — enable/disable auto-arming when a track is selected
+
+#### Infrastructure
+
+- Added `duplicate_scene` to `NON_IDEMPOTENT_COMMANDS` in `connections/ableton.py`
+- Created `MCP_Server/tools/scenes.py` — new focused tool module for scene management
+- Registered scenes module in `MCP_Server/tools/__init__.py`
+
+### Tool count: **334** core + **19 optional** (ElevenLabs) = **353 total**
+
+---
+
 ## v3.6.0 — 2026-03-10
 
 ### MCP Server Instructions — Expanded

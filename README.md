@@ -1,6 +1,6 @@
 # AbletonBridge
 
-**341 tools connecting Claude AI to Ableton Live** (322 core + 19 optional ElevenLabs voice/SFX tools)
+**353 tools connecting Claude AI to Ableton Live** (334 core + 19 optional ElevenLabs voice/SFX tools)
 
 AbletonBridge gives Claude direct control over your Ableton Live session through the Model Context Protocol. Create tracks, write MIDI, design sounds, mix, automate, browse instruments, snapshot presets, and navigate deep into device chains and modulation matrices — all through natural language conversation.
 
@@ -38,7 +38,7 @@ MCP Server (modular architecture):
   connections/       — ableton.py (TCP), m4l.py (UDP/OSC)
   cache/             — browser.py (cache + disk persistence)
   dashboard/         — html.py, server.py (Starlette)
-  tools/             — 14 modules (322 tools)
+  tools/             — 15 modules (334 tools)
   prompts.py         — 4 MCP prompt templates
   instructions.py    — server instructions (cross-tool guidance)
 ```
@@ -53,13 +53,14 @@ MCP Server (modular architecture):
 
 ---
 
-## Tool Overview (322 core + 19 optional = 341 total)
+## Tool Overview (334 core + 19 optional = 353 total)
 
 | Area | Examples | Count |
 |---|---|---|
-| Session & Transport | tempo, play/record, capture, Link, punch, capabilities | ~52 |
-| Tracks & Mixing | create/rename tracks, routing, monitoring, groups | ~28 |
-| Clips & Scenes | create/edit clips, follow actions, warp markers, scenes | ~54 |
+| Session & Transport | tempo, play/record, capture, Link, punch, playback position | ~53 |
+| Tracks & Mixing | create/rename tracks, routing, monitoring, groups, implicit arm | ~29 |
+| Clips & Scenes | create/edit clips, follow actions, warp markers | ~54 |
+| Scenes | create/delete/duplicate, fire, name, color, tempo, follow actions | ~10 |
 | Mixer | unified set_mixer, batch_set_mixer, sends, crossfader | ~13 |
 | Devices & Parameters | load/configure, rack chains, real-time, sidechain, plugin info | ~44 |
 | Browser & Presets | search/load instruments, presets, device presets | ~12 |
@@ -71,9 +72,9 @@ MCP Server (modular architecture):
 | Audio Analysis | audio clip info, track meters, input meters | ~3 |
 | Grid Notation | ASCII drum/melodic pattern I/O | ~2 |
 | Compound Workflows | create instrument/drum track, batch mixer, effect chains | ~11 |
-| **Core subtotal** | | **322** |
+| **Core subtotal** | | **334** |
 | ElevenLabs (optional) | voice generation, SFX, cloning, transcription | 19 |
-| **Total** | | **341** |
+| **Total** | | **353** |
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete per-tool breakdown.
 
@@ -99,7 +100,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 - **Concurrency control** — async semaphore serializes tool dispatch; threading locks protect TCP and UDP sockets from corruption
 - **Tool execution timeout** — 120s hard timeout prevents stuck tools from blocking the entire pipeline
 - **Bounded thread pool** — explicit 8-worker limit prevents resource exhaustion during rapid tool call bursts
-- **Standardized responses** — all 322 tools return consistent `tool_success()`/`tool_error()` JSON envelopes via decorator
+- **Standardized responses** — all 334 tools return consistent `tool_success()`/`tool_error()` JSON envelopes via decorator
 - **Chunk reassembly hardening** — duplicate detection, progress logging, missing chunk index reporting
 - **Parameter resolution cache** — 500-entry FIFO cache for brute-force display→value resolution (O(1) after first call)
 - **Effect chain persistence** — saved templates survive server restarts via `~/.ableton-bridge/chain_templates.json`
@@ -110,7 +111,7 @@ AbletonBridge is built to handle real-world sessions without crashing Ableton:
 ## Flexibility
 
 - **Any MCP client** — Claude Desktop, Cursor, Claude Code, or any MCP-compatible tool
-- **282 tools without Max for Live** — full session control via TCP/UDP Remote Script; M4L is optional
+- **294 tools without Max for Live** — full session control via TCP/UDP Remote Script; M4L is optional
 - **+40 deep-access tools with M4L** — hidden parameters, rack internals, audio analysis, event monitoring
 - **+19 optional ElevenLabs tools** — AI voice generation, sound effects, cloning, transcription
 - **Ableton Live 10, 11, and 12** — graceful API fallbacks for version-specific features
