@@ -1,5 +1,5 @@
 # AbletonBridge - Ableton Live Model Context Protocol Integration
-# Version 4.'.'
+# Version 4.0.0
 # Python >= 3.10 required
 # Repository: https://github.com/hidingwill/AbletonBridge/
 
