@@ -16,7 +16,7 @@ AbletonBridge is a 3-layer system connecting AI assistants to Ableton Live throu
 │                    MCP Server                         │
 │  ┌─────────┐  ┌────────────┐  ┌──────────────┐      │
 │  │ server.py│  │  tools/*   │  │  prompts.py  │      │
-│  │(orchestr)│  │(14 modules)│  │(4 workflows) │      │
+│  │(orchestr)│  │(15 modules)│  │(4 workflows) │      │
 │  └────┬─────┘  └─────┬──────┘  └──────────────┘      │
 │       │              │         ┌──────────────┐       │
 │       │              │         │instructions. │       │
@@ -104,18 +104,19 @@ MCP_Server/
 │                             #   - DashboardLogHandler (pipes logs to buffer)
 │
 └── tools/
-    ├── __init__.py           # register_all_tools(mcp) — calls 14 modules
+    ├── __init__.py           # register_all_tools(mcp) — calls 15 modules
     ├── _base.py              # Shared infrastructure
     │                         #   - _tool_handler (semaphore + asyncio.to_thread + timeout)
     │                         #   - _m4l_result(), tool_success(), tool_error()
-    ├── session.py            # 55 tools: transport, tempo, recording, views
-    ├── tracks.py             # 28 tools: track CRUD, routing, monitoring
+    ├── session.py            # 56 tools: transport, tempo, recording, views, playback
+    ├── tracks.py             # 29 tools: track CRUD, routing, monitoring, implicit arm
     ├── clips.py              # 54 tools: clip CRUD, notes, loop, follow actions
     ├── mixer.py              # 22 tools: volume, pan, sends, set_mixer
     ├── devices.py            # 44 tools: device params, racks, sidechain
     ├── browser.py            # 12 tools: search, load, presets
     ├── automation.py         # 12 tools: clip/track automation
     ├── arrangement.py        # 12 tools: arrangement clips, time editing
+    ├── scenes.py             # 10 tools: scene CRUD, fire, follow actions, tempo
     ├── creative.py           # 17 tools: chords, drums, arpeggios, euclidean
     ├── m4l_tools.py          # 40 tools: M4L bridge (hidden params, chains)
     ├── snapshots.py          # 18 tools: snapshot/macro/param_map stores
@@ -246,7 +247,7 @@ Defined in `instructions.py` and passed to `FastMCP(instructions=...)`. Automati
 - `sound_design` — parameter exploration guide
 - `arrange_section` — arrangement section builder
 
-### Tools (322 core + 19 optional)
+### Tools (334 core + 19 optional)
 All tools use the `@_tool_handler` decorator which:
 1. Gates execution via `asyncio.Semaphore(1)` — only one tool runs at a time, preventing thread pool exhaustion and TCP socket corruption
 2. Wraps sync functions in `asyncio.to_thread()` for non-blocking execution
