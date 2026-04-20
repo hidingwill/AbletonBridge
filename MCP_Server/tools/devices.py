@@ -1421,7 +1421,38 @@ def register_tools(mcp):
         })
         return json.dumps(result)
 
-    # NOTE: set_macro_value is registered in tools/snapshots.py (its canonical home)
+    @mcp.tool()
+    @_tool_handler("setting rack macro")
+    def set_rack_macro(ctx: Context, track_index: int, device_index: int,
+                       macro_index: int, value: float,
+                       track_type: str = "track") -> str:
+        """Set the value of a specific macro knob on an Instrument/Audio Effect Rack.
+
+        Parameters:
+        - track_index: The index of the track containing the Rack
+        - device_index: The index of the Rack device on the track
+        - macro_index: Which macro to set (0-based, typically 0-7 or 0-15)
+        - value: Target value (0.0 to 1.0)
+        - track_type: "track" (default), "return", or "master"
+        """
+        _validate_index(track_index, "track_index")
+        _validate_index(device_index, "device_index")
+        if macro_index < 0:
+            raise ValueError("macro_index must be >= 0")
+        if not (0.0 <= value <= 1.0):
+            raise ValueError("value must be between 0.0 and 1.0")
+        if track_type not in ("track", "return", "master"):
+            raise ValueError("track_type must be 'track', 'return', or 'master'")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_macro_value", {
+            "track_index": track_index,
+            "device_index": device_index,
+            "macro_index": macro_index,
+            "value": value,
+            "track_type": track_type,
+        })
+        macro_name = result.get("macro_name", f"Macro {macro_index + 1}")
+        return f"Set {macro_name} to {result.get('value', value):.3f} on track {track_index} device {device_index}"
 
     # ------------------------------------------------------------------
     # Chain selector & chain operations

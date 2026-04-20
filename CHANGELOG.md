@@ -4,6 +4,28 @@ All notable changes to AbletonBridge will be documented in this file.
 
 ---
 
+## v4.0.0-c — 2026-04-20
+
+### New Tools: Arrangement Composition Analysis & Rack Macro Control
+
+Added 6 new MCP tools: 5 arrangement composition analysis tools and 1 Rack macro setter.
+
+#### Arrangement Composition Analysis (5 new compound tools — `MCP_Server/tools/arrangement.py`)
+
+- `get_arrangement_overview` — full arrangement map: tempo, time sig, per-track clips, cue points, sections
+- `analyze_arrangement_density` — divide arrangement into time regions, compute clip density per region
+- `analyze_arrangement_sections` — detect song sections from cue points or clip density changes, characterize each section (sparse, building, peak, breakdown)
+- `analyze_note_content` — aggregate note statistics: pitch range, velocity, key/scale detection (Krumhansl-Schmuckler), pitch class distribution
+- `compare_arrangement_sections` — compare two time regions for structural similarity (track overlap, clip names, density)
+
+#### Devices (1 new tool — `MCP_Server/tools/devices.py`)
+
+- `set_rack_macro` — set Rack macro knob values by index (wraps Remote Script `set_macro_value` command)
+
+### Tool count: **340** core + **19 optional** (ElevenLabs) = **359 total**
+
+---
+
 ## v4.0.0 — 2026-03-29
 
 ### Code Quality, Bug Fixes & Version Alignment
