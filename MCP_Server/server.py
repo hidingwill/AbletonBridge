@@ -16,7 +16,6 @@ import concurrent.futures
 import logging
 import os
 import socket
-import sys
 import time
 import threading
 from contextlib import asynccontextmanager
@@ -191,7 +190,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         except RuntimeError as e:
             logger.error(str(e))
             logger.error("Exiting to avoid conflicts.")
-            sys.exit(1)
+            raise
 
         logger.info("AbletonBridge server starting up")
         state.server_start_time = time.time()
