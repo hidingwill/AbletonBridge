@@ -245,6 +245,28 @@ class TestSeparateStemsImportArrangement:
                 mock_client, str(mix), "x", MagicMock()
             )
 
+    def test_raises_when_create_audio_track_has_no_index(self, tmp_path, monkeypatch):
+        samples = tmp_path / "Samples"
+        samples.mkdir()
+        monkeypatch.setattr(el, "SAMPLES_DIR", str(samples))
+
+        mix = samples / "mix.mp3"
+        mix.write_bytes(b"fake-mix")
+
+        zip_bytes = _stem_zip_bytes([("vocals", b"v")])
+        mock_client = MagicMock()
+        mock_client.music.separate_stems.return_value = iter([zip_bytes])
+
+        ableton = MagicMock()
+        ableton.send_command.return_value = {}
+
+        monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
+
+        with pytest.raises(RuntimeError, match="no index"):
+            el.separate_stems_import_arrangement(
+                mock_client, str(mix), "x", ableton,
+            )
+
 
 # ---------------------------------------------------------------------------
 # MCP tools (async, mocked API + Ableton)
@@ -330,6 +352,26 @@ class TestGenerateMusicTool:
         raw = await fn(ctx, prompt="", music_length_ms=3000)
         data = json.loads(raw)
         assert data["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_validation_whitespace_only_prompt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(el, "SAMPLES_DIR", str(tmp_path))
+        mcp = _register_el_tools()
+        fn = _tool_fn(mcp, "generate_music")
+
+        ctx = MagicMock()
+        raw = await fn(ctx, prompt="   \t  ", music_length_ms=3000)
+        data = json.loads(raw)
+        assert data["status"] == "error"
+
+
+class TestRequireTrackIndex:
+    def test_raises_when_missing(self):
+        with pytest.raises(RuntimeError, match="no index"):
+            el._require_track_index({})
+
+    def test_returns_index(self):
+        assert el._require_track_index({"index": 3}) == 3
 
 
 class TestSeparateStemsTool:

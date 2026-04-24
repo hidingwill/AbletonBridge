@@ -20,8 +20,18 @@ from MCP_Server.connections.ableton import get_ableton_connection
 
 logger = logging.getLogger("AbletonBridge")
 
-SAMPLES_DIR = os.path.join(
-    pathlib.Path.home(), "Music", "Ableton", "User Library", "Samples"
+
+def _default_samples_dir() -> str:
+    home = pathlib.Path.home()
+    if os.name == "nt":
+        return str(home / "Documents" / "Ableton" / "User Library" / "Samples")
+    return str(home / "Music" / "Ableton" / "User Library" / "Samples")
+
+
+SAMPLES_DIR = (
+    os.environ.get("ABLETON_SAMPLES_DIR")
+    or os.environ.get("ELEVENLABS_OUTPUT_DIR")
+    or _default_samples_dir()
 )
 
 _el_client = None
@@ -71,7 +81,9 @@ def _get_elevenlabs_client():
         _repo_root = pathlib.Path(__file__).resolve().parents[2]
         load_dotenv(_repo_root / ".env")
     except ImportError:
-        pass
+        logger.warning(
+            "python-dotenv not installed; .env will not be loaded automatically."
+        )
 
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
@@ -88,22 +100,28 @@ def _get_elevenlabs_client():
 def _make_filename(name: str, ext: str = "mp3") -> str:
     sanitized = re.sub(r'[<>:"/\\|?*]', '', name).strip()
     sanitized = re.sub(r'\s+', '_', sanitized)[:60] or "untitled"
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     return f"{sanitized}_{ts}.{ext}"
 
 
-def separate_stems_import_arrangement(client, filepath: str, source_name: str, ableton) -> tuple:
-    """Separate *filepath* into six stems, save under Samples, import to new tracks (intuitive names + order)."""
-    import time as _time
+def _require_track_index(track_result: dict, command: str = "create_audio_track") -> int:
+    if "index" not in track_result:
+        raise RuntimeError(f"{command} returned no index: {track_result!r}")
+    return track_result["index"]
 
+
+def _extract_stems_to_samples(
+    client, filepath: str, source_name: str, stem_variation_id: str
+) -> list:
+    """Call ElevenLabs stem separation, write stems under SAMPLES_DIR, return stem metadata dicts."""
     os.makedirs(SAMPLES_DIR, exist_ok=True)
 
-    logger.info("Separating stems for '%s'", source_name)
+    logger.info("Separating stems for '%s' (%s)", source_name, stem_variation_id)
     with open(filepath, "rb") as f:
         zip_data = io.BytesIO()
         for chunk in client.music.separate_stems(
             file=f,
-            stem_variation_id="six_stems_v1",
+            stem_variation_id=stem_variation_id,
             output_format="mp3_44100_128",
         ):
             zip_data.write(chunk)
@@ -133,15 +151,20 @@ def separate_stems_import_arrangement(client, filepath: str, source_name: str, a
     if not stem_files:
         raise RuntimeError("No audio stems found in the response from ElevenLabs")
 
-    _time.sleep(1)
+    return stem_files
 
+
+def _import_stems_to_arrangement(stem_files: list, ableton) -> list:
+    """Sort stems, create tracks, import clips. Mutates *stem_files* entries with track_index/track_name."""
+    import time as _time
+
+    _time.sleep(1)
     stem_files.sort(key=lambda s: _stem_sort_key(s["stem"]))
 
     track_indices = []
-
     for stem in stem_files:
         track_result = ableton.send_command("create_audio_track", {"index": -1})
-        track_idx = track_result.get("index", 0)
+        track_idx = _require_track_index(track_result)
         track_indices.append(track_idx)
 
         track_label = _stem_track_display_name(stem["stem"])
@@ -159,6 +182,19 @@ def separate_stems_import_arrangement(client, filepath: str, source_name: str, a
         stem["track_index"] = track_idx
         stem["track_name"] = track_label
 
+    return track_indices
+
+
+def separate_stems_import_arrangement(
+    client,
+    filepath: str,
+    source_name: str,
+    ableton,
+    stem_variation_id: str = "six_stems_v1",
+) -> tuple:
+    """Separate *filepath* into stems, save under Samples, import to new tracks (intuitive names + order)."""
+    stem_files = _extract_stems_to_samples(client, filepath, source_name, stem_variation_id)
+    track_indices = _import_stems_to_arrangement(stem_files, ableton)
     return stem_files, track_indices
 
 
@@ -192,7 +228,7 @@ def register_tools(mcp):
         - separate_stems: If true (default), separates into 6 stems before importing. If false, imports as a single track.
         - track_name: Optional label for saved audio files (mix + stem exports). Stem tracks are named e.g. Vocals, Drums.
         """
-        if not prompt:
+        if not prompt or not prompt.strip():
             raise ValueError("Prompt is required.")
         if music_length_ms < 3000 or music_length_ms > 600000:
             raise ValueError("music_length_ms must be between 3000 (3s) and 600000 (10min)")
@@ -235,7 +271,7 @@ def register_tools(mcp):
 
             if separate_stems:
                 stem_files, track_indices = separate_stems_import_arrangement(
-                    client, filepath, source_name, ableton,
+                    client, filepath, source_name, ableton, stem_variation_id="six_stems_v1",
                 )
                 result.update({
                     "stem_count": len(stem_files),
@@ -253,7 +289,7 @@ def register_tools(mcp):
                 })
             else:
                 track_result = ableton.send_command("create_audio_track", {"index": -1})
-                track_idx = track_result.get("index", 0)
+                track_idx = _require_track_index(track_result)
 
                 name = track_name or f"EL Music - {prompt[:30]}"
                 ableton.send_command("set_track_name", {
@@ -321,39 +357,9 @@ def register_tools(mcp):
 
         logger.info("Separating stems for '%s' using %s", filepath.name, variation)
 
-        with open(filepath, "rb") as f:
-            zip_data = io.BytesIO()
-            for chunk in client.music.separate_stems(
-                file=f,
-                stem_variation_id=variation,
-                output_format="mp3_44100_128",
-            ):
-                zip_data.write(chunk)
-
-        zip_data.seek(0)
-        stem_files = []
-
-        with zipfile.ZipFile(zip_data, "r") as zf:
-            for entry in zf.namelist():
-                if not entry.endswith((".mp3", ".wav")):
-                    continue
-                stem_label = pathlib.Path(entry).stem
-                stem_filename = _make_filename(f"{source_name}_{stem_label}")
-                stem_path = os.path.join(SAMPLES_DIR, stem_filename)
-
-                with open(stem_path, "wb") as out:
-                    out.write(zf.read(entry))
-
-                stem_files.append({
-                    "stem": stem_label,
-                    "filename": stem_filename,
-                    "filepath": stem_path,
-                    "file_size_mb": round(os.path.getsize(stem_path) / 1048576, 2),
-                })
-                logger.info("Extracted stem: %s -> %s", stem_label, stem_path)
-
-        if not stem_files:
-            raise RuntimeError("No audio stems found in the response from ElevenLabs")
+        stem_files = _extract_stems_to_samples(
+            client, str(filepath), source_name, variation,
+        )
 
         result = {
             "source_file": str(filepath),
@@ -363,33 +369,8 @@ def register_tools(mcp):
         }
 
         if auto_import:
-            import time
             ableton = get_ableton_connection()
-            time.sleep(1)
-
-            stem_files.sort(key=lambda s: _stem_sort_key(s["stem"]))
-
-            track_indices = []
-            for stem in stem_files:
-                track_result = ableton.send_command("create_audio_track", {"index": -1})
-                track_idx = track_result.get("index", 0)
-                track_indices.append(track_idx)
-
-                track_label = _stem_track_display_name(stem["stem"])
-                ableton.send_command("set_track_name", {
-                    "track_index": track_idx, "name": track_label,
-                })
-
-                time.sleep(1)
-                ableton.send_command("import_audio_to_arrangement", {
-                    "track_index": track_idx,
-                    "file_path": stem["filepath"],
-                    "position": 0.0,
-                })
-
-                stem["track_index"] = track_idx
-                stem["track_name"] = track_label
-
+            track_indices = _import_stems_to_arrangement(stem_files, ableton)
             result["track_indices"] = track_indices
             return json.dumps({
                 "status": "ok",

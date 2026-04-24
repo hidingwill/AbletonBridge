@@ -44,6 +44,9 @@ include = ["MCP_Server*", "elevenlabs_mcp"]
 [tool.setuptools.package-data]
 MCP_Server = ["browser_cache_seed.json"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [project.urls]
 "Homepage" = "https://github.com/WilliamDeSimone/AbletonBridge"
 "Bug Tracker" = "https://github.com/WilliamDeSimone/AbletonBridge/issues"
