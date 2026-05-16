@@ -19,6 +19,10 @@ def register_tools(mcp):
 
         Call this first in any session to understand what features are available.
         Returns JSON with connection status, M4L availability, browser cache state, etc.
+
+        When `m4l_connected` is false, the response includes a
+        `m4l_dependent_capabilities` list and a `m4l_setup_hint` so the agent
+        immediately knows what's blocked and how to unblock it.
         """
         from MCP_Server import __version__
         m4l_sockets_ready, m4l_connected = get_m4l_status()
@@ -29,7 +33,7 @@ def register_tools(mcp):
         except Exception:
             ableton_connected = False
 
-        return json.dumps({
+        response = {
             "server_version": __version__,
             "ableton_connected": ableton_connected,
             "m4l_connected": m4l_connected,
@@ -50,7 +54,31 @@ def register_tools(mcp):
                 "macros": len(state.macro_store),
                 "param_maps": len(state.param_map_store),
             },
-        })
+        }
+
+        # Surface what's blocked when M4L is not connected so the agent doesn't
+        # silently fall back to inadequate alternatives or hallucinate.
+        if not m4l_connected:
+            response["m4l_dependent_capabilities"] = [
+                "FabFilter plugin parameter reads (Pro-Q 4, Pro-L, Pro-C, etc.) — "
+                "without M4L, only the bypass toggle is visible",
+                "Hidden / non-automatable parameter reads on plugins (discover_device_params)",
+                "Bulk parameter operations (get_chain_device_params_m4l, set_chain_device_param_m4l)",
+                "Split stereo pan reads (get_split_stereo)",
+                "set_device_hidden_parameter (any device with hidden state)",
+                "Note surgery with stable note IDs (modify_clip_notes, remove_clip_notes_by_id)",
+                "Device snapshot full state capture / morph (snapshot_device_state, morph_between_snapshots)",
+                "Property observation with low-latency events (observe_property, get_property_changes)",
+                "Audio analysis (analyze_track_audio, analyze_audio_clip)",
+            ]
+            response["m4l_setup_hint"] = (
+                "To unlock these capabilities, drag the AbletonBridge Max for Live "
+                "device onto any track in your set (a hidden utility track works fine). "
+                "The bridge will auto-connect within a few seconds — re-run "
+                "get_server_capabilities to confirm m4l_connected is true."
+            )
+
+        return json.dumps(response)
 
 
     @mcp.tool()

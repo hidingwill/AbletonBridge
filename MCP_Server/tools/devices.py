@@ -1,5 +1,6 @@
 """Device/parameter tool handlers for AbletonBridge."""
 import json
+import re
 import time
 import logging
 from typing import Dict, Any, List, Optional
@@ -399,7 +400,7 @@ def _validate_property_value(
             raise ValueError(f"Value {value} above maximum {max_val} for '{property_name}'.")
 
 
-def _m4l_batch_set_params(m4l, track_index, device_index, parameters):
+def _m4l_batch_set_params(m4l, track_index, device_index, parameters, track_type="track"):
     """Set multiple hidden parameters by sending individual set_hidden_param
     commands sequentially.
 
@@ -415,6 +416,7 @@ def _m4l_batch_set_params(m4l, track_index, device_index, parameters):
                 "device_index": device_index,
                 "parameter_index": int(p["index"]),
                 "value": float(p["value"]),
+                "track_type": track_type,
             })
             if result.get("status") == "success":
                 ok += 1
@@ -519,23 +521,78 @@ def register_tools(mcp):
         device_type = info.get("device_type", "native")
         param_count = info.get("parameter_count", 0)
         class_name = info.get("class_name", "")
+        device_name = info.get("name", "")
+
+        # Detect plugin-class devices regardless of how device_type is reported.
+        # PluginDevice = VST/VST3, AuPluginDevice = AU. Both expose parameters
+        # via Configure. Some devices are reported as "native" by device_type
+        # detection but are actually plugins by class_name — treat them as plugins.
+        is_plugin_class = class_name in ("PluginDevice", "AuPluginDevice")
+        is_plugin_type = device_type in ("vst", "vst3", "au")
+        is_plugin = is_plugin_class or is_plugin_type
+
+        # FabFilter detection — Pro-Q, Pro-L, Pro-C, Pro-G, Pro-MB, Pro-DS, Saturn,
+        # Volcano, Timeless, Twin, etc. These plugins expose only the bypass toggle
+        # by default and require either Configure (for some) or M4L bridge (for
+        # internal/hidden state) to read meaningfully.
+        name_lower = device_name.lower()
+        is_fabfilter = name_lower.startswith("pro-") or name_lower.startswith("fabfilter")
+
+        # Get M4L state for guidance contextualisation.
+        try:
+            from MCP_Server.dashboard.server import get_m4l_status
+            _, m4l_connected = get_m4l_status()
+        except Exception:
+            m4l_connected = False
 
         result = {
-            "name": info.get("name", ""),
+            "name": device_name,
             "class_name": class_name,
             "device_type": device_type,
             "parameter_count": param_count,
-            "is_plugin": device_type in ("vst", "vst3", "au"),
-            "is_configured": param_count > 32 if device_type in ("vst", "vst3", "au") else None,
+            "is_plugin": is_plugin,
+            "is_fabfilter": is_fabfilter,
+            "is_configured": (param_count > 32) if is_plugin else None,
+            "m4l_connected": m4l_connected,
+            "m4l_required": False,
             "guidance": [],
         }
 
-        if device_type in ("vst", "vst3", "au"):
+        # FabFilter-specific guidance (highest priority — surface loudly).
+        # IMPORTANT: FabFilter plugins do NOT expose their internal state via
+        # automation. Both the standard API and the M4L bridge read the same
+        # device.parameters LOM array, so neither path can reveal bands the
+        # user hasn't Configured. The actual fix is the Configure button.
+        if is_fabfilter:
+            if param_count <= 1:
+                result["guidance"].append(
+                    "*** FabFilter plugin detected — only 'Device On' is exposed. ***  "
+                    "FabFilter plugins do not publish their internal state to Live's "
+                    "automation list; the M4L bridge cannot work around this (it reads "
+                    "the same device.parameters array). To make bands / low cut / dynamic "
+                    "nodes readable via the API, you must click the Configure button "
+                    "(wrench icon) in Ableton's device wrapper and add each parameter "
+                    "you want exposed. Alternatives if Configure is impractical: read the "
+                    "plugin GUI via computer-use, or inspect the FabFilter preset XML "
+                    "(unsupported binary format — research project)."
+                )
+            else:
+                result["guidance"].append(
+                    "FabFilter plugin with {0} parameters exposed via Configure. "
+                    "Standard get_device_parameters / set_device_parameter will work for "
+                    "these. Any additional bands not in this list are not API-accessible "
+                    "until Configured.".format(param_count)
+                )
+
+        # Generic plugin guidance.
+        if is_plugin and not is_fabfilter:
             if param_count <= 32:
                 result["guidance"].append(
-                    "This plugin exposes only {0} parameters (default limit is 32). "
-                    "To access more parameters, open the device in Ableton, click "
-                    "the Configure button (wrench icon), and manually add parameters.".format(param_count)
+                    "This plugin exposes only {0} parameters via the standard API "
+                    "(default limit is 32). To access more, open the device in "
+                    "Ableton, click the Configure button (wrench icon), and add "
+                    "parameters manually. For hidden/internal state, the M4L bridge "
+                    "is required.".format(param_count)
                 )
             else:
                 result["guidance"].append(
@@ -545,14 +602,28 @@ def register_tools(mcp):
                 "VST/AU internal presets are NOT accessible via the scripting API. "
                 "Use Ableton's preset system (get_device_presets) for saved presets."
             )
-        elif device_type == "m4l":
+
+        # M4L device guidance.
+        if device_type == "m4l":
             result["guidance"].append(
                 "Max for Live device. Use get_device_hidden_parameter and "
                 "set_device_hidden_parameter (M4L bridge) for full parameter access."
             )
-        elif device_type == "native":
+
+        # Truly native Ableton device (and not misclassified plugin).
+        if device_type == "native" and not is_plugin_class:
             result["guidance"].append(
-                "Native Ableton device. All parameters are fully accessible."
+                "Native Ableton device. Parameters are accessible via "
+                "get_device_parameters / set_device_parameter."
+            )
+
+        # Trip-wire: parameter_count == 1 almost always means we only see the
+        # bypass toggle. Surface this loudly regardless of detected type.
+        if param_count <= 1 and not is_fabfilter:
+            result["guidance"].append(
+                "Only {0} parameter exposed — likely just the bypass toggle. "
+                "If this is unexpected, the device may need Configure (for plugins) "
+                "or the M4L bridge (for hidden parameters).".format(param_count)
             )
 
         return json.dumps(result)
@@ -634,6 +705,197 @@ def register_tools(mcp):
         if errs:
             summary += f" ({len(errs)} not found: {', '.join(r['name'] for r in errs)})"
         return summary
+
+    @mcp.tool()
+    @_tool_handler("setting parameter by display value")
+    def set_parameter_by_display(
+        ctx: Context,
+        track_index: int,
+        device_index: int,
+        parameter_name: str,
+        target_display: str,
+        track_type: str = "track",
+        max_iterations: int = 20,
+    ) -> str:
+        """Set a device parameter to a specific display value by binary-searching the 0..1 range.
+
+        Use this when you know the human-readable target (e.g. "150 ms", "-12 dB",
+        "4 kHz") but don't know the underlying normalized value. The tool probes the
+        parameter at its low/high range to determine monotonicity, then binary-searches
+        until the parsed display value matches the target within tolerance.
+
+        Best for continuous, monotonic numeric parameters (Threshold, Attack, Release,
+        Frequency, Gain, etc.). For quantized parameters with named values (e.g. "Peak"/"RMS"
+        or "High Pass 12dB"), pass the exact value-item name as target_display.
+
+        Tolerance: ~0.1% of target value or 0.01 absolute, whichever is larger.
+
+        Parameters:
+        - track_index: The index of the track containing the device
+        - device_index: The index of the device on the track
+        - parameter_name: The name of the parameter to set (exact match)
+        - target_display: The display value to converge on, e.g. "150 ms", "-12 dB", "4 kHz", "Peak"
+        - track_type: Type of track: "track" (default), "return", or "master"
+        - max_iterations: Cap on binary-search iterations (default 20)
+
+        Returns the final normalized value, the actual display achieved, and iteration count.
+        Side note: the search briefly sets the parameter to its min and max — use during
+        composition, not live performance.
+        """
+        _validate_index(device_index, "device_index")
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
+        if track_type not in ("track", "return", "master"):
+            return "Error: track_type must be 'track', 'return', or 'master'"
+        if max_iterations < 3 or max_iterations > 50:
+            return "Error: max_iterations must be between 3 and 50."
+
+        ableton = get_ableton_connection()
+
+        def _get_params():
+            r = ableton.send_command("get_device_parameters", {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            })
+            return r.get("parameters", []) if isinstance(r, dict) else []
+
+        def _find_param(params):
+            for p in params:
+                if p.get("name") == parameter_name:
+                    return p
+            return None
+
+        def _set_value(v):
+            ableton.send_command("set_device_parameter", {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+                "parameter_name": parameter_name,
+                "value": float(v),
+            })
+
+        def _parse_num(display_str):
+            if display_str is None:
+                return None
+            m = re.search(r"-?\d+\.?\d*", str(display_str))
+            return float(m.group()) if m else None
+
+        param = _find_param(_get_params())
+        if param is None:
+            return f"Parameter '{parameter_name}' not found on this device."
+
+        v_min = param.get("min", 0.0)
+        v_max = param.get("max", 1.0)
+
+        # Quantized path: match target against value_items
+        if param.get("is_quantized") and param.get("value_items"):
+            items = param["value_items"]
+            target_norm = str(target_display).strip().lower()
+            for i, item in enumerate(items):
+                if str(item).strip().lower() == target_norm:
+                    # Quantized params in Live LOM step in integer units between min..max.
+                    # For most, value 0..N-1 maps to value_items[0..N-1]. Common: min=0, max=N-1.
+                    v = float(v_min) + float(i)
+                    if v > v_max:
+                        # Fallback proportional mapping
+                        v = v_min + i * (v_max - v_min) / max(1, len(items) - 1)
+                    _set_value(v)
+                    new_p = _find_param(_get_params())
+                    return (
+                        f"Set '{parameter_name}' to {v} (quantized index {i}) "
+                        f"→ display '{new_p.get('display_value', '?')}'"
+                    )
+            return (
+                f"Target '{target_display}' not found in quantized value_items: {items}. "
+                f"Use set_device_parameter with a value 0..{len(items)-1}."
+            )
+
+        target_num = _parse_num(target_display)
+        if target_num is None:
+            return (
+                f"Could not parse '{target_display}' as a number. "
+                f"For non-numeric targets on continuous params, use set_device_parameter directly."
+            )
+
+        # Probe range to determine direction
+        _set_value(v_min)
+        p_low = _find_param(_get_params())
+        d_low = _parse_num(p_low.get("display_value")) if p_low else None
+
+        _set_value(v_max)
+        p_high = _find_param(_get_params())
+        d_high = _parse_num(p_high.get("display_value")) if p_high else None
+
+        if d_low is None or d_high is None:
+            # Restore to a sane mid-point
+            _set_value((v_min + v_max) / 2.0)
+            return (
+                f"Could not parse display values at parameter range. "
+                f"Low end display: '{p_low.get('display_value') if p_low else '?'}', "
+                f"high end: '{p_high.get('display_value') if p_high else '?'}'. "
+                f"Use set_device_parameter directly."
+            )
+
+        d_range_min = min(d_low, d_high)
+        d_range_max = max(d_low, d_high)
+        # Allow small overshoot tolerance at edges
+        slack = max(abs(target_num) * 0.001, 0.001)
+        if target_num < d_range_min - slack or target_num > d_range_max + slack:
+            # Set to the nearest end and exit
+            v_pick = v_min if abs(target_num - d_low) < abs(target_num - d_high) else v_max
+            _set_value(v_pick)
+            final_p = _find_param(_get_params())
+            return (
+                f"Target {target_num} outside reachable display range "
+                f"[{d_range_min}, {d_range_max}]. Clamped to '{final_p.get('display_value', '?')}'."
+            )
+
+        increasing = d_high > d_low
+
+        # Binary search
+        v_low, v_high = v_min, v_max
+        iterations = 2  # probes already used
+        v_mid = (v_low + v_high) / 2.0
+        d_mid = None
+        new_p = None
+
+        while iterations < max_iterations:
+            v_mid = (v_low + v_high) / 2.0
+            _set_value(v_mid)
+            new_p = _find_param(_get_params())
+            d_mid = _parse_num(new_p.get("display_value")) if new_p else None
+            iterations += 1
+
+            if d_mid is None:
+                return (
+                    f"Display parse failed at v={v_mid:.4f} "
+                    f"('{new_p.get('display_value') if new_p else '?'}')"
+                )
+
+            tol = max(abs(target_num) * 0.001, 0.01)
+            if abs(d_mid - target_num) <= tol:
+                return (
+                    f"Converged: '{parameter_name}' set to value {v_mid:.6f} "
+                    f"→ display '{new_p.get('display_value')}' ({iterations} iterations, target was '{target_display}')"
+                )
+
+            if increasing:
+                if d_mid < target_num:
+                    v_low = v_mid
+                else:
+                    v_high = v_mid
+            else:
+                if d_mid > target_num:
+                    v_low = v_mid
+                else:
+                    v_high = v_mid
+
+        return (
+            f"Did not converge after {max_iterations} iterations. "
+            f"Closest: value {v_mid:.6f} → '{new_p.get('display_value') if new_p else '?'}' "
+            f"(target '{target_display}'). The mapping may not be monotonic in this range."
+        )
 
     # ------------------------------------------------------------------
     # Real-time (UDP) parameter tools
@@ -753,7 +1015,8 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("loading instrument")
-    def load_instrument_or_effect(ctx: Context, track_index: int, uri: str) -> str:
+    def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
+                                   track_type: str = "track") -> str:
         """
         Load an instrument or effect onto a track using its URI or device name.
 
@@ -762,8 +1025,12 @@ def register_tools(mcp):
         insert_device_by_name is faster.
 
         Parameters:
-        - track_index: The index of the track to load the instrument on
+        - track_index: The index of the track to load the instrument on (ignored
+          if track_type="master")
         - uri: The URI of the instrument/effect, OR a device name (resolved automatically).
+        - track_type: "track" (default), "return", or "master". When loading onto
+          the master, only audio effects succeed — instruments / MIDI effects are
+          silently rejected by Ableton.
 
         You can pass any Ableton instrument, audio effect, or MIDI effect name
         directly — no need to call search_browser first.  The server resolves the
@@ -777,49 +1044,66 @@ def register_tools(mcp):
         Examples:
           load_instrument_or_effect(track_index=0, uri="Analog")
           load_instrument_or_effect(track_index=2, uri="Reverb")
-          load_instrument_or_effect(track_index=1, uri="Compressor")
+          load_instrument_or_effect(track_index=0, uri="Utility", track_type="master")
 
         For presets or third-party items, use search_browser() to find the full URI.
         """
-        _validate_index(track_index, "track_index")
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         uri = resolve_device_uri(uri)
         ableton = get_ableton_connection()
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": uri
+            "item_uri": uri,
+            "track_type": track_type,
         })
 
         # Check if the instrument was loaded successfully
+        target = "master" if track_type == "master" else (
+            "return {0}".format(track_index) if track_type == "return" else "track {0}".format(track_index)
+        )
         if result.get("loaded", False):
             new_devices = result.get("new_devices", [])
             if new_devices:
-                return f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}"
+                return f"Loaded instrument with URI '{uri}' on {target}. New devices: {', '.join(new_devices)}"
             else:
                 devices = result.get("devices_after", [])
-                return f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}"
+                return f"Loaded instrument with URI '{uri}' on {target}. Devices: {', '.join(devices)}"
         else:
-            return f"Failed to load instrument with URI '{uri}'"
+            return f"Failed to load instrument with URI '{uri}' on {target}"
 
     @mcp.tool()
     @_tool_handler("inserting device by name")
     def insert_device_by_name(ctx: Context, track_index: int,
                                device_name: str,
-                               target_index: int = None) -> str:
+                               target_index: int = None,
+                               track_type: str = "track") -> str:
         """Insert a native Live device by name into a track's device chain.
         Faster than load_instrument_or_effect but native devices only (not plugins
         or M4L). Available since Live 12.3.
 
         Parameters:
-        - track_index: Track to insert device into
+        - track_index: Track to insert device into (ignored if track_type="master")
         - device_name: Name as shown in Live's UI (e.g. 'Compressor', 'EQ Eight', 'Reverb', 'Auto Filter')
-        - target_index: Position in the device chain (optional, defaults to end)
+        - target_index: Position in the device chain (optional, defaults to end).
+          NOTE: target_index has known issues — if you hit "Internal error", omit it
+          and let it default to end-of-chain.
+        - track_type: "track" (default), "return", or "master". Use "master" to
+          drop a device on the master chain (e.g. a Utility for mono check).
         """
-        params = {"track_index": track_index, "device_name": device_name}
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
+        params = {"track_index": track_index, "device_name": device_name, "track_type": track_type}
         if target_index is not None:
             params["target_index"] = target_index
         ableton = get_ableton_connection()
         result = ableton.send_command("insert_device", params)
-        return f"Device '{device_name}' inserted on track {track_index}"
+        target = "master" if track_type == "master" else (
+            "return {0}".format(track_index) if track_type == "return" else "track {0}".format(track_index)
+        )
+        if not result.get("inserted", True):
+            return f"Failed to insert '{device_name}' on {target}: {result.get('reason', 'unknown')}"
+        return f"Device '{device_name}' inserted on {target}"
 
     # ------------------------------------------------------------------
     # Compressor sidechain
@@ -1653,31 +1937,51 @@ def register_tools(mcp):
     @_tool_handler("moving device")
     def move_device(ctx: Context, track_index: int, device_index: int,
                      dest_track_index: int, dest_position: int,
-                     track_type: str = "track") -> str:
+                     track_type: str = "track",
+                     dest_track_type: str = None) -> str:
         """Move a device from one track/position to another.
 
+        Supports moves within and between regular, return, and master tracks.
+        To reorder devices within the master chain, set track_type="master"
+        and dest_track_type="master" with the same source/dest track_index.
+
         Parameters:
-        - track_index: Source track index
+        - track_index: Source track index (ignored when track_type="master")
         - device_index: Index of the device to move
-        - dest_track_index: Destination track index
-        - dest_position: Position in the destination track's device chain
+        - dest_track_index: Destination track index (ignored when dest_track_type="master")
+        - dest_position: Position in the destination chain (0..len(devices))
         - track_type: Source track type: "track" (default), "return", or "master"
+        - dest_track_type: Destination track type. Defaults to the same as track_type.
         """
-        _validate_index(track_index, "track_index")
-        _validate_index(device_index, "device_index")
-        _validate_index(dest_track_index, "dest_track_index")
-        _validate_index(dest_position, "dest_position")
-        if track_type not in ("track", "return", "master"):
+        valid = ("track", "return", "master")
+        if track_type not in valid:
             raise ValueError("track_type must be 'track', 'return', or 'master'")
+        if dest_track_type is not None and dest_track_type not in valid:
+            raise ValueError("dest_track_type must be 'track', 'return', or 'master'")
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
+        _validate_index(device_index, "device_index")
+        effective_dest_type = dest_track_type or track_type
+        if effective_dest_type != "master":
+            _validate_index(dest_track_index, "dest_track_index")
+        _validate_index(dest_position, "dest_position")
+
         ableton = get_ableton_connection()
-        result = ableton.send_command("move_device", {
+        payload = {
             "track_index": track_index,
             "device_index": device_index,
             "dest_track_index": dest_track_index,
             "dest_position": dest_position,
             "track_type": track_type,
-        })
-        return f"Moved device from track {track_index} position {device_index} to track {dest_track_index} position {dest_position}"
+        }
+        if dest_track_type is not None:
+            payload["dest_track_type"] = dest_track_type
+        result = ableton.send_command("move_device", payload)
+        return (
+            f"Moved device '{result.get('device_name', '?')}' from "
+            f"{track_type} {track_index} position {device_index} to "
+            f"{effective_dest_type} {dest_track_index} position {dest_position}"
+        )
 
     # ------------------------------------------------------------------
     # Audio-to-MIDI conversion tools
