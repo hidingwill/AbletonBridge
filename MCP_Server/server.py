@@ -185,89 +185,119 @@ def _browser_cache_warmup():
 
 
 # ===================================================================
-# Server lifespan — startup / shutdown
+# Process-level startup / shutdown
+#
+# These run ONCE per process lifetime — never per MCP session.
+# They acquire the singleton lock, connect to Ableton, bind the M4L UDP
+# sockets, start the dashboard, kick off the browser cache, and load
+# effect-chain templates.
+#
+# Called from:
+#   stdio transport       -> server_lifespan (one session = one process)
+#   streamable-http xport -> the process-level lifespan in main()
+#                            (server_lifespan stays a no-op per session)
+# ===================================================================
+
+def _process_level_startup() -> None:
+    """One-time process-level startup."""
+    try:
+        state.singleton_lock_sock = _acquire_singleton_lock()
+    except RuntimeError as e:
+        logger.error(str(e))
+        logger.error("Exiting to avoid conflicts.")
+        sys.exit(1)
+
+    logger.info("AbletonBridge server starting up")
+    state.server_start_time = time.time()
+
+    # Bound the thread pool used by asyncio.to_thread() to prevent
+    # excessive thread creation. With the tool semaphore limiting
+    # concurrent TCP operations to 1, most workers stay idle; 8 provides
+    # headroom for background tasks (browser cache, M4L, dashboard).
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(
+        concurrent.futures.ThreadPoolExecutor(max_workers=8)
+    )
+
+    # Connect to Ableton (Remote Script TCP)
+    try:
+        get_ableton_connection()
+        logger.info("Successfully connected to Ableton on startup")
+    except Exception as e:
+        logger.warning("Could not connect to Ableton on startup: %s", e)
+        logger.warning("Make sure the Ableton Remote Script is running")
+
+    # Auto-connect M4L bridge in background
+    threading.Thread(
+        target=_m4l_auto_connect, daemon=True, name="m4l-auto-connect"
+    ).start()
+
+    # Start web dashboard on background thread
+    try:
+        start_dashboard_server()
+    except Exception as e:
+        logger.warning("Dashboard failed to start: %s", e)
+
+    # Pre-populate browser cache in background
+    threading.Thread(
+        target=_browser_cache_warmup, daemon=True, name="browser-cache-warmup"
+    ).start()
+
+    # Load saved effect chain templates from disk
+    try:
+        from MCP_Server.tools.workflows import load_chain_templates_from_disk
+        load_chain_templates_from_disk()
+    except Exception as e:
+        logger.warning("Could not load chain templates: %s", e)
+
+
+def _process_level_shutdown() -> None:
+    """One-time process-level shutdown."""
+    stop_dashboard_server()
+
+    if state.ableton_connection:
+        logger.info("Disconnecting from Ableton on shutdown")
+        state.ableton_connection.disconnect()
+        state.ableton_connection = None
+
+    if state.m4l_connection:
+        logger.info("Disconnecting M4L bridge on shutdown")
+        state.m4l_connection.disconnect()
+        state.m4l_connection = None
+
+    _release_singleton_lock(state.singleton_lock_sock)
+    state.singleton_lock_sock = None
+    logger.info("AbletonBridge server shut down")
+
+
+# ===================================================================
+# Per-MCP-session lifespan
 # ===================================================================
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
-    """Manage server startup and shutdown lifecycle."""
-    try:
-        # Singleton guard
-        try:
-            state.singleton_lock_sock = _acquire_singleton_lock()
-        except RuntimeError as e:
-            logger.error(str(e))
-            logger.error("Exiting to avoid conflicts.")
-            sys.exit(1)
+    """Per-MCP-session lifespan.
 
-        logger.info("AbletonBridge server starting up")
-        state.server_start_time = time.time()
+    Transport-aware:
+      stdio: one MCP session per process — do startup + shutdown here.
+      streamable-http: invoked per session. Skip startup/shutdown; the
+        process-level lifespan in main() owns those, so each new client
+        connect is a no-op here. This prevents the per-session "Address
+        already in use" errors when the dashboard / M4L UDP sockets are
+        already bound by the first session.
+    """
+    transport = os.environ.get("ABLETON_BRIDGE_TRANSPORT", "stdio")
 
-        # Bound the thread pool used by asyncio.to_thread() to prevent
-        # excessive thread creation. With the tool semaphore limiting
-        # concurrent TCP operations to 1, most workers stay idle; 8 provides
-        # headroom for background tasks (browser cache, M4L, dashboard).
-        loop = asyncio.get_event_loop()
-        loop.set_default_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=8)
-        )
-
-        # Connect to Ableton (Remote Script TCP)
-        try:
-            ableton = get_ableton_connection()
-            logger.info("Successfully connected to Ableton on startup")
-        except Exception as e:
-            logger.warning("Could not connect to Ableton on startup: %s", e)
-            logger.warning("Make sure the Ableton Remote Script is running")
-
-        # Auto-connect M4L bridge in background
-        threading.Thread(
-            target=_m4l_auto_connect, daemon=True, name="m4l-auto-connect"
-        ).start()
-
-        # Start web dashboard on background thread
-        try:
-            start_dashboard_server()
-        except Exception as e:
-            logger.warning("Dashboard failed to start: %s", e)
-
-        # Pre-populate browser cache in background
-        threading.Thread(
-            target=_browser_cache_warmup, daemon=True, name="browser-cache-warmup"
-        ).start()
-
-        # Load saved effect chain templates from disk
-        try:
-            from MCP_Server.tools.workflows import load_chain_templates_from_disk
-            load_chain_templates_from_disk()
-        except Exception as e:
-            logger.warning("Could not load chain templates: %s", e)
-
+    if transport == "streamable-http":
+        # Process-level lifespan in main() owns startup/shutdown
         yield {}
+        return
 
+    try:
+        _process_level_startup()
+        yield {}
     finally:
-        # In streamable-http mode, server_lifespan runs per MCP session, so
-        # tearing down the singleton lock, Ableton, M4L and dashboard here
-        # would kill them between every client connect. Skip the cleanup —
-        # the OS reaps the process-level resources at process exit.
-        if os.environ.get("ABLETON_BRIDGE_TRANSPORT", "stdio") == "streamable-http":
-            logger.info("AbletonBridge MCP session ended (process-level resources kept alive)")
-        else:
-            stop_dashboard_server()
-
-            if state.ableton_connection:
-                logger.info("Disconnecting from Ableton on shutdown")
-                state.ableton_connection.disconnect()
-                state.ableton_connection = None
-
-            if state.m4l_connection:
-                logger.info("Disconnecting M4L bridge on shutdown")
-                state.m4l_connection.disconnect()
-                state.m4l_connection = None
-
-            _release_singleton_lock(state.singleton_lock_sock)
-            state.singleton_lock_sock = None
-            logger.info("AbletonBridge server shut down")
+        _process_level_shutdown()
 
 
 # ===================================================================
@@ -409,13 +439,19 @@ def main():
         # FastMCP's default lifespan (`lambda app: session_manager.run()`) leaves
         # the task group uninitialised on mcp>=1.26 + starlette>=0.52 + py3.14,
         # so every request 500s with "Task group is not initialized". Override
-        # the router's lifespan with the canonical wrapped form.
+        # the router's lifespan with the canonical wrapped form AND drive the
+        # one-time process-level startup/shutdown here, since server_lifespan
+        # runs per MCP session in streamable-http mode.
         starlette_app = mcp.streamable_http_app()
 
         @asynccontextmanager
         async def lifespan(app) -> AsyncIterator[None]:
-            async with mcp.session_manager.run():
-                yield
+            _process_level_startup()
+            try:
+                async with mcp.session_manager.run():
+                    yield
+            finally:
+                _process_level_shutdown()
 
         starlette_app.router.lifespan_context = lifespan
 
