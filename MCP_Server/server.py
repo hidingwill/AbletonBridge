@@ -63,7 +63,14 @@ def _acquire_singleton_lock() -> socket.socket:
 
     Returns the bound socket (caller must keep it alive for the server's
     lifetime).  Raises RuntimeError if another instance already holds the lock.
+
+    Idempotent: in streamable-http mode `server_lifespan` is invoked per MCP
+    session, so the second client would otherwise fail the bind. If this
+    process already holds the lock, return the existing socket.
     """
+    if state.singleton_lock_sock is not None:
+        return state.singleton_lock_sock
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -239,22 +246,28 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         yield {}
 
     finally:
-        # Shutdown sequence
-        stop_dashboard_server()
+        # In streamable-http mode, server_lifespan runs per MCP session, so
+        # tearing down the singleton lock, Ableton, M4L and dashboard here
+        # would kill them between every client connect. Skip the cleanup —
+        # the OS reaps the process-level resources at process exit.
+        if os.environ.get("ABLETON_BRIDGE_TRANSPORT", "stdio") == "streamable-http":
+            logger.info("AbletonBridge MCP session ended (process-level resources kept alive)")
+        else:
+            stop_dashboard_server()
 
-        if state.ableton_connection:
-            logger.info("Disconnecting from Ableton on shutdown")
-            state.ableton_connection.disconnect()
-            state.ableton_connection = None
+            if state.ableton_connection:
+                logger.info("Disconnecting from Ableton on shutdown")
+                state.ableton_connection.disconnect()
+                state.ableton_connection = None
 
-        if state.m4l_connection:
-            logger.info("Disconnecting M4L bridge on shutdown")
-            state.m4l_connection.disconnect()
-            state.m4l_connection = None
+            if state.m4l_connection:
+                logger.info("Disconnecting M4L bridge on shutdown")
+                state.m4l_connection.disconnect()
+                state.m4l_connection = None
 
-        _release_singleton_lock(state.singleton_lock_sock)
-        state.singleton_lock_sock = None
-        logger.info("AbletonBridge server shut down")
+            _release_singleton_lock(state.singleton_lock_sock)
+            state.singleton_lock_sock = None
+            logger.info("AbletonBridge server shut down")
 
 
 # ===================================================================
@@ -372,8 +385,48 @@ logging.getLogger().addHandler(DashboardLogHandler())
 # ===================================================================
 
 def main():
-    """Run the MCP server."""
-    mcp.run()
+    """Run the MCP server.
+
+    Transport is controlled by ABLETON_BRIDGE_TRANSPORT env var:
+      - "stdio" (default): for direct stdio MCP clients (Claude Desktop, Claude Code stdio).
+      - "streamable-http": for HTTP MCP clients. Listens on
+        ABLETON_BRIDGE_HOST:ABLETON_BRIDGE_PORT (default 127.0.0.1:8001) at
+        ABLETON_BRIDGE_PATH (default /mcp). One process serves multiple clients
+        via FastMCP's session multiplexing — no supergateway/proxy needed.
+    """
+    transport = os.environ.get("ABLETON_BRIDGE_TRANSPORT", "stdio")
+    if transport == "streamable-http":
+        import uvicorn
+
+        mcp.settings.host = os.environ.get("ABLETON_BRIDGE_HOST", "127.0.0.1")
+        mcp.settings.port = int(os.environ.get("ABLETON_BRIDGE_PORT", "8001"))
+        mcp.settings.streamable_http_path = os.environ.get("ABLETON_BRIDGE_PATH", "/mcp")
+        logger.info(
+            "Starting in streamable-http mode at http://%s:%d%s",
+            mcp.settings.host, mcp.settings.port, mcp.settings.streamable_http_path,
+        )
+
+        # FastMCP's default lifespan (`lambda app: session_manager.run()`) leaves
+        # the task group uninitialised on mcp>=1.26 + starlette>=0.52 + py3.14,
+        # so every request 500s with "Task group is not initialized". Override
+        # the router's lifespan with the canonical wrapped form.
+        starlette_app = mcp.streamable_http_app()
+
+        @asynccontextmanager
+        async def lifespan(app) -> AsyncIterator[None]:
+            async with mcp.session_manager.run():
+                yield
+
+        starlette_app.router.lifespan_context = lifespan
+
+        uvicorn.run(
+            starlette_app,
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level="info",
+        )
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":
