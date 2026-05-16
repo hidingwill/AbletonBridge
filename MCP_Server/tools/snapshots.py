@@ -10,6 +10,7 @@ from MCP_Server.connections.ableton import get_ableton_connection
 from MCP_Server.connections.m4l import get_m4l_connection
 from MCP_Server.validation import _validate_index, _validate_range
 from MCP_Server.tools.devices import _m4l_batch_set_params
+from MCP_Server.tools.m4l_tools import _validate_track_type
 import MCP_Server.state as state
 
 logger = logging.getLogger("AbletonBridge")
@@ -27,7 +28,8 @@ def register_tools(mcp):
         ctx: Context,
         track_index: int,
         device_index: int,
-        snapshot_name: str = ""
+        snapshot_name: str = "",
+        track_type: str = "track"
     ) -> str:
         """Capture the complete state of a device (all parameters including hidden ones).
 
@@ -36,19 +38,23 @@ def register_tools(mcp):
         Use list_snapshots() to see all stored snapshots.
 
         Parameters:
-        - track_index: The index of the track containing the device
+        - track_index: The index of the track containing the device (ignored when track_type is "master")
         - device_index: The index of the device on the track
         - snapshot_name: Optional human-readable name for the snapshot
+        - track_type: "track" (default), "return", or "master"
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
 
         m4l = get_m4l_connection()
         result = m4l.send_command("discover_params", {
             "track_index": track_index,
-            "device_index": device_index
+            "device_index": device_index,
+            "track_type": track_type,
         })
 
         if result.get("status") != "success":
@@ -64,6 +70,7 @@ def register_tools(mcp):
             "timestamp": timestamp,
             "track_index": track_index,
             "device_index": device_index,
+            "track_type": track_type,
             "device_name": data.get("device_name", "Unknown"),
             "device_class": data.get("device_class", "Unknown"),
             "parameter_count": data.get("parameter_count", 0),
@@ -76,6 +83,7 @@ def register_tools(mcp):
         return (
             f"Snapshot saved: '{snapshot['name']}' (ID: {snapshot_id})\n"
             f"Device: {snapshot['device_name']} ({snapshot['device_class']})\n"
+            f"Location: {track_type} {track_index}, device {device_index}\n"
             f"Parameters captured: {snapshot['parameter_count']}\n"
             f"Timestamp: {timestamp}"
         )
@@ -86,18 +94,21 @@ def register_tools(mcp):
         ctx: Context,
         snapshot_id: str,
         track_index: int = -1,
-        device_index: int = -1
+        device_index: int = -1,
+        track_type: str = ""
     ) -> str:
         """Restore a previously captured device state from a snapshot.
 
         Applies all parameter values from the snapshot to the device using batch set.
-        By default restores to the same track/device the snapshot was taken from.
-        Optionally specify different track_index/device_index to apply to a different device.
+        By default restores to the same track/device the snapshot was taken from
+        (including track_type — return/master snapshots restore to the same return/master slot).
+        Optionally specify different track_index/device_index/track_type to apply to a different device.
 
         Parameters:
         - snapshot_id: The ID of the snapshot to restore (from snapshot_device_state or list_snapshots)
         - track_index: Override target track (-1 = use original track from snapshot)
         - device_index: Override target device (-1 = use original device from snapshot)
+        - track_type: Override target track type ("" = use original from snapshot; otherwise "track"/"return"/"master")
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
@@ -109,6 +120,8 @@ def register_tools(mcp):
 
             target_track = track_index if track_index >= 0 else snapshot["track_index"]
             target_device = device_index if device_index >= 0 else snapshot["device_index"]
+            target_track_type = track_type if track_type else snapshot.get("track_type", "track")
+            _validate_track_type(target_track_type)
 
             params_to_set = [{"index": p["index"], "value": p["value"]} for p in snapshot["parameters"]]
 
@@ -116,12 +129,12 @@ def register_tools(mcp):
                 return "Snapshot contains no parameters to restore."
 
             m4l = get_m4l_connection()
-            data = _m4l_batch_set_params(m4l, target_track, target_device, params_to_set)
+            data = _m4l_batch_set_params(m4l, target_track, target_device, params_to_set, target_track_type)
             ok = data["params_set"]
             failed = data["params_failed"]
             return (
                 f"Restored snapshot '{snapshot['name']}' (ID: {snapshot_id})\n"
-                f"Target: track {target_track}, device {target_device}\n"
+                f"Target: {target_track_type} {target_track}, device {target_device}\n"
                 f"Parameters restored: {ok}/{len(params_to_set)} ({failed} failed)"
             )
         except ConnectionError as e:
@@ -146,11 +159,12 @@ def register_tools(mcp):
 
         output = f"Stored snapshots ({len(non_group)}):\n\n"
         for sid, snap in non_group.items():
+            tt = snap.get('track_type', 'track')
             output += (
                 f"  ID: {sid}\n"
                 f"  Name: {snap['name']}\n"
                 f"  Device: {snap.get('device_name', '?')} ({snap.get('device_class', '?')})\n"
-                f"  Location: track {snap.get('track_index', '?')}, device {snap.get('device_index', '?')}\n"
+                f"  Location: {tt} {snap.get('track_index', '?')}, device {snap.get('device_index', '?')}\n"
                 f"  Parameters: {snap.get('parameter_count', '?')}\n"
                 f"  Captured: {snap.get('timestamp', '?')}\n\n"
             )
@@ -187,7 +201,7 @@ def register_tools(mcp):
         output = (
             f"Snapshot: {snap.get('name', snapshot_id)} (ID: {snapshot_id})\n"
             f"Device: {snap.get('device_name', '?')} ({snap.get('device_class', '?')})\n"
-            f"Location: track {snap.get('track_index', '?')}, device {snap.get('device_index', '?')}\n"
+            f"Location: {snap.get('track_type', 'track')} {snap.get('track_index', '?')}, device {snap.get('device_index', '?')}\n"
             f"Captured: {snap.get('timestamp', '?')}\n"
             f"Parameters ({snap.get('parameter_count', 0)}):\n\n"
         )
@@ -223,7 +237,8 @@ def register_tools(mcp):
     def snapshot_all_devices(
         ctx: Context,
         track_indices: List[int],
-        snapshot_name: str = ""
+        snapshot_name: str = "",
+        track_type: str = "track"
     ) -> str:
         """Snapshot the state of all devices across one or more tracks.
 
@@ -231,15 +246,22 @@ def register_tools(mcp):
         that can be restored together with restore_group_snapshot().
 
         Parameters:
-        - track_indices: List of track indices to snapshot
+        - track_indices: List of track indices to snapshot. Ignored when track_type="master".
         - snapshot_name: Optional name for the group snapshot
+        - track_type: "track" (default), "return", or "master". Applies to all indices in
+          track_indices — to snapshot a mix of track types, call this tool once per type.
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        if not isinstance(track_indices, list) or len(track_indices) == 0:
-            raise ValueError("track_indices must be a non-empty list of integers.")
-        for ti in track_indices:
-            _validate_index(ti, "track_index")
+        _validate_track_type(track_type)
+
+        if track_type == "master":
+            track_indices = [0]
+        else:
+            if not isinstance(track_indices, list) or len(track_indices) == 0:
+                raise ValueError("track_indices must be a non-empty list of integers.")
+            for ti in track_indices:
+                _validate_index(ti, "track_index")
 
         m4l = get_m4l_connection()
         ableton = get_ableton_connection()
@@ -249,13 +271,19 @@ def register_tools(mcp):
         device_count = 0
 
         for ti in track_indices:
-            track_info = ableton.send_command("get_track_info", {"track_index": ti})
+            if track_type == "track":
+                track_info = ableton.send_command("get_track_info", {"track_index": ti})
+            elif track_type == "return":
+                track_info = ableton.send_command("get_return_track_info", {"return_track_index": ti})
+            else:  # master
+                track_info = ableton.send_command("get_master_track_info")
             devices = track_info.get("devices", [])
 
             for di, dev in enumerate(devices):
                 result = m4l.send_command("discover_params", {
                     "track_index": ti,
-                    "device_index": di
+                    "device_index": di,
+                    "track_type": track_type,
                 })
 
                 if result.get("status") != "success":
@@ -268,10 +296,11 @@ def register_tools(mcp):
                     state.snapshot_store[snap_id] = {
                         "id": snap_id,
                         "group_id": group_id,
-                        "name": f"{data.get('device_name', 'Unknown')}_t{ti}_d{di}",
+                        "name": f"{data.get('device_name', 'Unknown')}_{track_type[0]}{ti}_d{di}",
                         "timestamp": timestamp,
                         "track_index": ti,
                         "device_index": di,
+                        "track_type": track_type,
                         "device_name": data.get("device_name", "Unknown"),
                         "device_class": data.get("device_class", "Unknown"),
                         "parameter_count": data.get("parameter_count", 0),
@@ -289,6 +318,7 @@ def register_tools(mcp):
                 "name": group_name,
                 "timestamp": timestamp,
                 "track_indices": track_indices,
+                "track_type": track_type,
                 "snapshot_ids": snapshot_ids,
                 "device_count": device_count
             }
@@ -336,7 +366,13 @@ def register_tools(mcp):
             if not params_to_set:
                 continue
 
-            data = _m4l_batch_set_params(m4l, snap["track_index"], snap["device_index"], params_to_set)
+            data = _m4l_batch_set_params(
+                m4l,
+                snap["track_index"],
+                snap["device_index"],
+                params_to_set,
+                snap.get("track_type", "track"),
+            )
             total_params += data["params_set"]
             total_failed += data["params_failed"]
             total_devices += 1
@@ -425,7 +461,8 @@ def register_tools(mcp):
         snapshot_b_id: str,
         position: float,
         track_index: int = -1,
-        device_index: int = -1
+        device_index: int = -1,
+        track_type: str = ""
     ) -> str:
         """Morph between two device snapshots by interpolating all parameters.
 
@@ -439,6 +476,7 @@ def register_tools(mcp):
         - position: Morph position (0.0 to 1.0)
         - track_index: Override target track (-1 = use snapshot A's track)
         - device_index: Override target device (-1 = use snapshot A's device)
+        - track_type: Override target track type ("" = use snapshot A's; otherwise "track"/"return"/"master")
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
@@ -454,6 +492,8 @@ def register_tools(mcp):
 
         target_track = track_index if track_index >= 0 else snap_a["track_index"]
         target_device = device_index if device_index >= 0 else snap_a["device_index"]
+        target_track_type = track_type if track_type else snap_a.get("track_type", "track")
+        _validate_track_type(target_track_type)
 
         b_by_index = {p["index"]: p for p in snap_b.get("parameters", [])}
 
@@ -480,13 +520,13 @@ def register_tools(mcp):
             return "No matching parameters found between the two snapshots."
 
         m4l = get_m4l_connection()
-        data = _m4l_batch_set_params(m4l, target_track, target_device, params_to_set)
+        data = _m4l_batch_set_params(m4l, target_track, target_device, params_to_set, target_track_type)
         ok = data["params_set"]
         return (
             f"Morph at position {position:.2f} "
             f"('{snap_a.get('name', snapshot_a_id)}' -> '{snap_b.get('name', snapshot_b_id)}')\n"
             f"Interpolated {ok} parameters, skipped {skipped} (unmatched)\n"
-            f"Target: track {target_track}, device {target_device}"
+            f"Target: {target_track_type} {target_track}, device {target_device}"
         )
 
     # ==================================================================
@@ -513,6 +553,7 @@ def register_tools(mcp):
             - parameter_index: int (LOM index from discover_device_params)
             - min_value: float (parameter value when macro = 0.0)
             - max_value: float (parameter value when macro = 1.0)
+            - track_type: str (optional, "track" / "return" / "master"; default "track")
 
         After creation, use set_macro_value() to control all linked parameters at once.
 
@@ -576,7 +617,7 @@ def register_tools(mcp):
 
         grouped: Dict[tuple, list] = {}
         for m in macro["mappings"]:
-            key = (m["track_index"], m["device_index"])
+            key = (m["track_index"], m["device_index"], m.get("track_type", "track"))
             interpolated = m["min_value"] + (m["max_value"] - m["min_value"]) * value
             if key not in grouped:
                 grouped[key] = []
@@ -586,8 +627,8 @@ def register_tools(mcp):
         total_set = 0
         total_failed = 0
 
-        for (ti, di), params in grouped.items():
-            data = _m4l_batch_set_params(m4l, ti, di, params)
+        for (ti, di, tt), params in grouped.items():
+            data = _m4l_batch_set_params(m4l, ti, di, params, tt)
             total_set += data["params_set"]
             total_failed += data["params_failed"]
 

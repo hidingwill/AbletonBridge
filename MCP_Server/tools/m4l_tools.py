@@ -9,6 +9,16 @@ from MCP_Server.connections.ableton import get_ableton_connection
 from MCP_Server.validation import _validate_index, _validate_range
 
 
+_VALID_TRACK_TYPES = ("track", "return", "master")
+
+
+def _validate_track_type(value: str) -> None:
+    if value not in _VALID_TRACK_TYPES:
+        raise ValueError(
+            "track_type must be 'track', 'return', or 'master', got '{0}'".format(value)
+        )
+
+
 def register_tools(mcp):
 
     # ==========================================================================
@@ -33,7 +43,12 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("discovering device parameters")
-    def discover_device_params(ctx: Context, track_index: int, device_index: int) -> str:
+    def discover_device_params(
+        ctx: Context,
+        track_index: int,
+        device_index: int,
+        track_type: str = "track",
+    ) -> str:
         """Discover ALL parameters for a device including hidden/non-automatable ones.
 
         Use to LIST parameter indices and names -- needed before calling set_device_hidden_parameter
@@ -44,17 +59,25 @@ def register_tools(mcp):
         which typically includes parameters not visible through the standard Remote Script API.
         Works with any Ableton device (Operator, Wavetable, Simpler, Analog, Drift, etc.).
 
+        Parameters:
+        - track_index: Track index (ignored when track_type is "master")
+        - device_index: Device index on the track
+        - track_type: "track" (default), "return", or "master"
+
         Requires the AbletonBridge M4L device to be loaded on any track.
 
         Compare the results with get_device_parameters() to see which parameters are hidden.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
 
         m4l = get_m4l_connection()
         result = m4l.send_command("discover_params", {
             "track_index": track_index,
-            "device_index": device_index
+            "device_index": device_index,
+            "track_type": track_type,
         })
 
         data = _m4l_result(result)
@@ -63,7 +86,12 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("getting hidden device parameters")
-    def get_device_hidden_parameters(ctx: Context, track_index: int, device_index: int) -> str:
+    def get_device_hidden_parameters(
+        ctx: Context,
+        track_index: int,
+        device_index: int,
+        track_type: str = "track",
+    ) -> str:
         """Get ALL parameters for a device including hidden/non-automatable ones.
 
         Use to READ current parameter values (including hidden ones). To get parameter
@@ -73,15 +101,23 @@ def register_tools(mcp):
         the full Live Object Model parameter tree, which exposes parameters that the
         standard API hides. Works with any Ableton device.
 
+        Parameters:
+        - track_index: Track index (ignored when track_type is "master")
+        - device_index: Device index on the track
+        - track_type: "track" (default), "return", or "master"
+
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
 
         m4l = get_m4l_connection()
         result = m4l.send_command("get_hidden_params", {
             "track_index": track_index,
-            "device_index": device_index
+            "device_index": device_index,
+            "track_type": track_type,
         })
 
         data = _m4l_result(result)
@@ -112,7 +148,8 @@ def register_tools(mcp):
         track_index: int,
         device_index: int,
         parameter_index: int,
-        value: float
+        value: float,
+        track_type: str = "track",
     ) -> str:
         """Set a device parameter by its LOM index, including hidden/non-automatable ones.
 
@@ -121,9 +158,18 @@ def register_tools(mcp):
         The value will be clamped to the parameter's valid range.
         Works with any Ableton device.
 
+        Parameters:
+        - track_index: Track index (ignored when track_type is "master")
+        - device_index: Device index on the track
+        - parameter_index: LOM parameter index from discover_device_params
+        - value: New value (will be clamped to min/max)
+        - track_type: "track" (default), "return", or "master"
+
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
         _validate_index(parameter_index, "parameter_index")
         if not isinstance(value, (int, float)) or isinstance(value, bool):
@@ -134,7 +180,8 @@ def register_tools(mcp):
             "track_index": track_index,
             "device_index": device_index,
             "parameter_index": parameter_index,
-            "value": value
+            "value": value,
+            "track_type": track_type,
         })
 
         data = _m4l_result(result)
@@ -153,7 +200,8 @@ def register_tools(mcp):
         ctx: Context,
         track_index: int,
         device_index: int,
-        parameters: List[Dict[str, float]]
+        parameters: List[Dict[str, float]],
+        track_type: str = "track",
     ) -> str:
         """Set multiple device parameters at once by their LOM indices (including hidden ones).
 
@@ -162,16 +210,19 @@ def register_tools(mcp):
         set_device_hidden_parameter() in a loop -- single round-trip to the M4L bridge.
 
         Parameters:
-        - track_index: The index of the track containing the device
+        - track_index: Track index (ignored when track_type is "master")
         - device_index: The index of the device on the track
         - parameters: List of {"index": parameter_index, "value": target_value} dicts
+        - track_type: "track" (default), "return", or "master"
 
         Use discover_device_params() first to find parameter indices.
         Values will be clamped to each parameter's valid range.
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
         if not isinstance(parameters, list) or len(parameters) == 0:
             raise ValueError("parameters must be a non-empty list.")
@@ -204,7 +255,8 @@ def register_tools(mcp):
                     "track_index": track_index,
                     "device_index": device_index,
                     "parameter_index": int(p["index"]),
-                    "value": float(p["value"])
+                    "value": float(p["value"]),
+                    "track_type": track_type,
                 })
                 if result.get("status") == "success":
                     ok_count += 1
@@ -234,7 +286,12 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("getting automation states")
-    def get_automation_states(ctx: Context, track_index: int, device_index: int) -> str:
+    def get_automation_states(
+        ctx: Context,
+        track_index: int,
+        device_index: int,
+        track_type: str = "track",
+    ) -> str:
         """Get automation state for all parameters of a device via M4L bridge.
 
         Returns only parameters that have automation (state > 0).
@@ -246,15 +303,19 @@ def register_tools(mcp):
         Requires the AbletonBridge M4L device to be loaded on any track.
 
         Parameters:
-        - track_index: The index of the track containing the device
+        - track_index: Track index (ignored when track_type is "master")
         - device_index: The index of the device to inspect
+        - track_type: "track" (default), "return", or "master"
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
         m4l = get_m4l_connection()
         result = m4l.send_command("get_automation_states", {
             "track_index": track_index,
             "device_index": device_index,
+            "track_type": track_type,
         })
         data = _m4l_result(result)
         return json.dumps(data)
@@ -760,6 +821,7 @@ def register_tools(mcp):
         device_index: int,
         parameter_index: int,
         value: float,
+        track_type: str = "track",
     ) -> str:
         """Set a device parameter via the M4L bridge with minimal undo impact.
 
@@ -769,14 +831,17 @@ def register_tools(mcp):
         to pollute the undo history.
 
         Parameters:
-        - track_index: The track containing the device
+        - track_index: Track index (ignored when track_type is "master")
         - device_index: The device index on the track
         - parameter_index: The LOM parameter index (use discover_device_params to find indices)
         - value: The value to set (will be clamped to parameter min/max)
+        - track_type: "track" (default), "return", or "master"
 
         Requires the AbletonBridge M4L device to be loaded on any track.
         """
-        _validate_index(track_index, "track_index")
+        _validate_track_type(track_type)
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         _validate_index(device_index, "device_index")
         _validate_index(parameter_index, "parameter_index")
 
@@ -786,6 +851,7 @@ def register_tools(mcp):
             "device_index": device_index,
             "parameter_index": parameter_index,
             "value": float(value),
+            "track_type": track_type,
         })
 
         data = _m4l_result(result)

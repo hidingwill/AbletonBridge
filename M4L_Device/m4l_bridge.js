@@ -21,9 +21,22 @@ outlets = 1;
 // Initialization
 // ---------------------------------------------------------------------------
 function loadbang() {
-    post("AbletonBridge M4L Bridge v4.0.0 starting...\n");
+    post("AbletonBridge M4L Bridge v4.1.0 starting...\n");
     post("Listening for OSC commands on port 9878.\n");
     post("Dashboard: http://127.0.0.1:9880\n");
+}
+
+// Build a LiveAPI device path for a regular track, return track, or the master track.
+// trackType: "track" | "return" | "master" (defaults to "track" if missing/unknown).
+// trackIdx is ignored when trackType is "master".
+function _buildDevicePath(trackIdx, deviceIdx, trackType) {
+    if (trackType === "master") {
+        return "live_set master_track devices " + deviceIdx;
+    }
+    if (trackType === "return") {
+        return "live_set return_tracks " + trackIdx + " devices " + deviceIdx;
+    }
+    return "live_set tracks " + trackIdx + " devices " + deviceIdx;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +286,7 @@ function handlePing(args) {
     var requestId = (args.length > 0) ? args[0].toString() : "";
     var response = {
         status: "success",
-        result: { m4l_bridge: true, version: "4.0.0" },
+        result: { m4l_bridge: true, version: "4.1.0" },
         id: requestId
     };
     sendResponse(JSON.stringify(response));
@@ -324,19 +337,20 @@ function handleGetAppVersion(args) {
 // ---------------------------------------------------------------------------
 
 function handleGetAutomationStates(args) {
-    // args: [track_index (int), device_index (int), request_id (string)]
-    if (args.length < 3) {
-        sendError("get_automation_states requires track_index, device_index, request_id", "");
+    // args: [track_index (int), device_index (int), track_type (string), request_id (string)]
+    if (args.length < 4) {
+        sendError("get_automation_states requires track_index, device_index, track_type, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
-    var requestId = args[2].toString();
+    var trackType = args[2].toString();
+    var requestId = args[3].toString();
 
-    var devicePath = "live_set tracks " + trackIdx + " devices " + deviceIdx;
+    var devicePath = _buildDevicePath(trackIdx, deviceIdx, trackType);
     var deviceApi = new LiveAPI(null, devicePath);
 
-    if (!_validateApi(deviceApi, requestId, "No device at track " + trackIdx + " device " + deviceIdx)) return;
+    if (!_validateApi(deviceApi, requestId, "No device at " + devicePath)) return;
 
     var deviceName = "";
     try { deviceName = deviceApi.get("name").toString(); } catch (e) {}
@@ -385,47 +399,51 @@ function handleGetAutomationStates(args) {
 }
 
 function handleDiscoverParams(args) {
-    // args: [track_index (int), device_index (int), request_id (string)]
-    if (args.length < 3) {
-        sendError("discover_params requires track_index, device_index, request_id", "");
+    // args: [track_index (int), device_index (int), track_type (string), request_id (string)]
+    if (args.length < 4) {
+        sendError("discover_params requires track_index, device_index, track_type, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
-    var requestId = args[2].toString();
+    var trackType = args[2].toString();
+    var requestId = args[3].toString();
 
     // Use chunked async discovery to avoid crashing Ableton.
     // Synchronous iteration of 40+ params with full readParamInfo() (7 get()
     // calls each) exceeds Max [js] scheduler tolerance and crashes.
-    _startChunkedDiscover(trackIdx, deviceIdx, requestId);
+    _startChunkedDiscover(trackIdx, deviceIdx, trackType, requestId);
 }
 
 function handleGetHiddenParams(args) {
-    // args: [track_index (int), device_index (int), request_id (string)]
-    if (args.length < 3) {
-        sendError("get_hidden_params requires track_index, device_index, request_id", "");
+    // args: [track_index (int), device_index (int), track_type (string), request_id (string)]
+    if (args.length < 4) {
+        sendError("get_hidden_params requires track_index, device_index, track_type, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
-    var requestId = args[2].toString();
+    var trackType = args[2].toString();
+    var requestId = args[3].toString();
 
-    _startChunkedDiscover(trackIdx, deviceIdx, requestId);
+    _startChunkedDiscover(trackIdx, deviceIdx, trackType, requestId);
 }
 
 function handleSetHiddenParam(args) {
-    // args: [track_index (int), device_index (int), parameter_index (int), value (float), request_id (string)]
-    if (args.length < 5) {
-        sendError("set_hidden_param requires track_index, device_index, parameter_index, value, request_id", "");
+    // args: [track_index (int), device_index (int), parameter_index (int), value (float),
+    //        track_type (string), request_id (string)]
+    if (args.length < 6) {
+        sendError("set_hidden_param requires track_index, device_index, parameter_index, value, track_type, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
     var paramIdx  = parseInt(args[2]);
     var value     = parseFloat(args[3]);
-    var requestId = args[4].toString();
+    var trackType = args[4].toString();
+    var requestId = args[5].toString();
 
-    var result = setHiddenParam(trackIdx, deviceIdx, paramIdx, value);
+    var result = setHiddenParam(trackIdx, deviceIdx, paramIdx, value, trackType);
     sendResult(result, requestId);
 }
 
@@ -445,8 +463,8 @@ var DISCOVER_CHUNK_DELAY = 50;  // ms between chunks
 
 var _discoverState = null;
 
-function _startChunkedDiscover(trackIdx, deviceIdx, requestId) {
-    var devicePath = "live_set tracks " + trackIdx + " devices " + deviceIdx;
+function _startChunkedDiscover(trackIdx, deviceIdx, trackType, requestId) {
+    var devicePath = _buildDevicePath(trackIdx, deviceIdx, trackType);
     _startChunkedDiscoverAtPath(devicePath, requestId);
 }
 
@@ -541,24 +559,26 @@ var BATCH_CHUNK_DELAY = 50;   // ms between chunks
 var _batchState = null;
 
 function handleBatchSetHiddenParams(args) {
-    // args: [track_index (int), device_index (int), params_json_b64 (string), request_id (string)]
+    // args: [track_index (int), device_index (int), track_type (string),
+    //        params_json_b64 (string), request_id (string)]
     if (_batchState) {
         var rid = args.length > 0 ? args[args.length - 1].toString() : "";
         sendError("Batch operation busy - try again shortly", rid);
         return;
     }
-    if (args.length < 4) {
-        sendError("batch_set_hidden_params requires track_index, device_index, params_json_b64, request_id", "");
+    if (args.length < 5) {
+        sendError("batch_set_hidden_params requires track_index, device_index, track_type, params_json_b64, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
+    var trackType = args[2].toString();
 
     // Max's udpreceive may split long OSC string arguments across multiple
-    // args.  Reassemble: everything between the two int args and the last
+    // args.  Reassemble: everything between track_type (index 2) and the last
     // arg (request_id) is the base64 payload.
     var requestId = args[args.length - 1].toString();
-    var paramsB64 = _reassembleB64(args, 2);
+    var paramsB64 = _reassembleB64(args, 3);
     if (!paramsB64) { sendError("Missing payload data", requestId); return; }
 
     post("batch_set: args.length=" + args.length + " b64len=" + paramsB64.length + "\n");
@@ -586,10 +606,10 @@ function handleBatchSetHiddenParams(args) {
         return;
     }
 
-    var devicePath = "live_set tracks " + trackIdx + " devices " + deviceIdx;
+    var devicePath = _buildDevicePath(trackIdx, deviceIdx, trackType);
     var deviceApi  = new LiveAPI(null, devicePath);
 
-    if (!_validateApi(deviceApi, requestId, "No device found at track " + trackIdx + " device " + deviceIdx)) return;
+    if (!_validateApi(deviceApi, requestId, "No device found at " + devicePath)) return;
 
     // Filter out parameter index 0 ("Device On") to avoid accidentally
     // disabling the device — a common cause of unexpected behavior.
@@ -2463,9 +2483,8 @@ function _base64decode(str) {
 // ---------------------------------------------------------------------------
 // LOM access: set a specific parameter by its LOM index
 // ---------------------------------------------------------------------------
-function setHiddenParam(trackIdx, deviceIdx, paramIdx, value) {
-    var paramPath = "live_set tracks " + trackIdx
-                  + " devices " + deviceIdx
+function setHiddenParam(trackIdx, deviceIdx, paramIdx, value, trackType) {
+    var paramPath = _buildDevicePath(trackIdx, deviceIdx, trackType)
                   + " parameters " + paramIdx;
     var paramApi  = new LiveAPI(null, paramPath);
 
@@ -2958,18 +2977,20 @@ function handleGetObservedChanges(args) {
 // ---------------------------------------------------------------------------
 
 function handleSetParamClean(args) {
-    // args: [track_index (int), device_index (int), parameter_index (int), value (float), request_id (string)]
-    if (args.length < 5) {
-        sendError("set_param_clean requires track_index, device_index, parameter_index, value, request_id", "");
+    // args: [track_index (int), device_index (int), parameter_index (int), value (float),
+    //        track_type (string), request_id (string)]
+    if (args.length < 6) {
+        sendError("set_param_clean requires track_index, device_index, parameter_index, value, track_type, request_id", "");
         return;
     }
     var trackIdx  = parseInt(args[0]);
     var deviceIdx = parseInt(args[1]);
     var paramIdx  = parseInt(args[2]);
     var value     = parseFloat(args[3]);
-    var requestId = args[4].toString();
+    var trackType = args[4].toString();
+    var requestId = args[5].toString();
 
-    var paramPath = "live_set tracks " + trackIdx + " devices " + deviceIdx + " parameters " + paramIdx;
+    var paramPath = _buildDevicePath(trackIdx, deviceIdx, trackType) + " parameters " + paramIdx;
 
     try {
         var paramApi = new LiveAPI(null, paramPath);

@@ -166,12 +166,17 @@ def create_audio_track(song, index, ctrl=None):
         raise
 
 
-def set_track_name(song, track_index, name, ctrl=None):
-    """Set the name of a track."""
+def set_track_name(song, track_index, name, track_type="track", ctrl=None):
+    """Set the name of a track.
+
+    Supports regular, return, and master tracks via track_type. Note: Live
+    typically does not allow renaming the master track via the LOM, so the
+    "master" case may raise from Live's API.
+    """
     try:
-        track = get_track(song, track_index)
+        track = get_track(song, track_index, track_type)
         track.name = name
-        return {"name": track.name}
+        return {"name": track.name, "track_type": track_type}
     except Exception as e:
         if ctrl:
             ctrl.log_message("Error setting track name: " + str(e))
