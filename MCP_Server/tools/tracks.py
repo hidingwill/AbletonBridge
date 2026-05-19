@@ -99,18 +99,32 @@ def register_tools(mcp):
 
     @mcp.tool()
     @_tool_handler("setting track name")
-    def set_track_name(ctx: Context, track_index: int, name: str) -> str:
+    def set_track_name(
+        ctx: Context,
+        track_index: int,
+        name: str,
+        track_type: str = "track",
+    ) -> str:
         """
-        Set the name of a track.
+        Set the name of a track. Works on regular tracks AND return tracks.
 
         Parameters:
-        - track_index: The index of the track to rename
+        - track_index: The index of the track to rename (ignored when track_type="master")
         - name: The new name for the track
+        - track_type: "track" (default), "return", or "master". Live typically blocks
+          renaming the master track via the LOM, so "master" may error from Live's API.
         """
-        _validate_index(track_index, "track_index")
+        if track_type not in ("track", "return", "master"):
+            raise ValueError("track_type must be 'track', 'return', or 'master'")
+        if track_type != "master":
+            _validate_index(track_index, "track_index")
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_track_name", {"track_index": track_index, "name": name})
-        return f"Renamed track to: {result.get('name', name)}"
+        result = ableton.send_command("set_track_name", {
+            "track_index": track_index,
+            "name": name,
+            "track_type": track_type,
+        })
+        return f"Renamed {track_type} track to: {result.get('name', name)}"
 
     @mcp.tool()
     @_tool_handler("setting track color")
@@ -370,6 +384,10 @@ def register_tools(mcp):
 
         Returns output_meter_left/right (0.0-1.0), playing_slot_index (-1 if none),
         and fired_slot_index (-1 if none).
+
+        For peak/avg statistics over a time window during playback (to audit
+        which tracks are actually contributing to the mix), use
+        sample_track_meters instead.
         """
         params = {}
         if track_index is not None:
@@ -377,6 +395,88 @@ def register_tools(mcp):
             params["track_index"] = track_index
         ableton = get_ableton_connection()
         result = ableton.send_command("get_track_meters", params)
+        return json.dumps(result)
+
+    @mcp.tool()
+    @_tool_handler("sampling track meters over time")
+    def sample_track_meters(ctx: Context,
+                             track_indices: list = None,
+                             duration_ms: int = 1000,
+                             interval_ms: int = 50,
+                             include_returns: bool = False,
+                             include_master: bool = False) -> str:
+        """Sample track output meters over a time window, returning peak/avg/min stats.
+
+        Use during playback to audit which tracks are actually contributing to
+        the mix — silent tracks are flagged via `is_silent` (peak below
+        ~ -60 dBFS). This is the right tool for "which tracks can I delete"
+        kinds of audits; a single get_track_meters reading at the wrong moment
+        can mis-label a track as silent.
+
+        Parameters:
+        - track_indices: List of regular track indices to sample. None = all
+          regular tracks. Set include_returns / include_master to also cover
+          those namespaces.
+        - duration_ms: How long to sample (default 1000ms, max 5000ms). Live's
+          UI is briefly less responsive while sampling — keep windows short.
+        - interval_ms: Sample interval (default 50ms ≈ 20 samples/sec).
+        - include_returns: Also sample return tracks.
+        - include_master: Also sample the master.
+
+        Returns per-track peak / avg / min for L and R, sample count, and
+        is_silent flag. Make sure the song is playing before calling.
+        """
+        params = {
+            "duration_ms": duration_ms,
+            "interval_ms": interval_ms,
+            "include_returns": include_returns,
+            "include_master": include_master,
+        }
+        if track_indices is not None:
+            params["track_indices"] = track_indices
+        ableton = get_ableton_connection()
+        result = ableton.send_command("sample_track_meters", params)
+        return json.dumps(result)
+
+    @mcp.tool()
+    @_tool_handler("finding devices by name")
+    def get_devices_by_name(ctx: Context,
+                             name: str,
+                             case_sensitive: bool = False,
+                             include_returns: bool = True,
+                             include_master: bool = True,
+                             max_devices_per_track: int = None) -> str:
+        """Find every device across the session whose name matches a string.
+
+        Walks regular tracks, return tracks, and master in one pass — much
+        faster than enumerating devices on each track separately. Ideal for
+        bulk audits like "find every Utility and read its Width" or "list all
+        Pro-Q 4 instances in the session".
+
+        Parameters:
+        - name: Device name to match (substring, case-insensitive by default).
+          Examples: "Utility", "Pro-Q", "Compressor".
+        - case_sensitive: If True, match exactly as typed.
+        - include_returns: Walk return tracks (default True).
+        - include_master: Include the master track (default True).
+        - max_devices_per_track: Optional cap on devices per track (defensive;
+          most tracks have <20).
+
+        Returns matches as a list of {track_type, track_index, track_name,
+        device_index, device_name, class_name, parameter_count}. Use the
+        track_type + track_index + device_index triple in follow-up calls
+        to get_device_parameters / set_device_parameter / etc.
+        """
+        params = {
+            "name": name,
+            "case_sensitive": case_sensitive,
+            "include_returns": include_returns,
+            "include_master": include_master,
+        }
+        if max_devices_per_track is not None:
+            params["max_devices_per_track"] = max_devices_per_track
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_devices_by_name", params)
         return json.dumps(result)
 
     @mcp.tool()

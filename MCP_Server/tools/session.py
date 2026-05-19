@@ -2,7 +2,7 @@
 import json
 from mcp.server.fastmcp import Context
 from MCP_Server.tools._base import _tool_handler, _m4l_result
-from MCP_Server.connections.ableton import get_ableton_connection
+from MCP_Server.connections.ableton import get_ableton_connection, probe_ableton_connection
 from MCP_Server.connections.m4l import get_m4l_connection
 from MCP_Server.validation import _validate_index, _validate_index_allow_negative, _validate_range
 import MCP_Server.state as state
@@ -19,17 +19,24 @@ def register_tools(mcp):
 
         Call this first in any session to understand what features are available.
         Returns JSON with connection status, M4L availability, browser cache state, etc.
+
+        When `m4l_connected` is false, the response includes a
+        `m4l_dependent_capabilities` list and a `m4l_setup_hint` so the agent
+        immediately knows what's blocked and how to unblock it.
+
+        ``ableton_connected`` is computed via an active probe (``probe_ableton_connection``):
+        if the cached connection is missing or dead, a single fast TCP connect to Live's
+        Remote Script (127.0.0.1:9877) is attempted before reporting. This prevents the
+        flag from staying stuck at ``false`` when the bridge process was started before
+        Live finished initialising — the old behaviour only read the cached state
+        variable, which was never refreshed unless an unrelated data-returning tool
+        happened to call ``get_ableton_connection`` first.
         """
         from MCP_Server import __version__
         m4l_sockets_ready, m4l_connected = get_m4l_status()
-        ableton_connected = bool(state.ableton_connection and state.ableton_connection.sock)
-        try:
-            if ableton_connected:
-                state.ableton_connection.sock.getpeername()
-        except Exception:
-            ableton_connected = False
+        ableton_connected = probe_ableton_connection(fast=True)
 
-        return json.dumps({
+        response = {
             "server_version": __version__,
             "ableton_connected": ableton_connected,
             "m4l_connected": m4l_connected,
@@ -50,7 +57,31 @@ def register_tools(mcp):
                 "macros": len(state.macro_store),
                 "param_maps": len(state.param_map_store),
             },
-        })
+        }
+
+        # Surface what's blocked when M4L is not connected so the agent doesn't
+        # silently fall back to inadequate alternatives or hallucinate.
+        if not m4l_connected:
+            response["m4l_dependent_capabilities"] = [
+                "FabFilter plugin parameter reads (Pro-Q 4, Pro-L, Pro-C, etc.) — "
+                "without M4L, only the bypass toggle is visible",
+                "Hidden / non-automatable parameter reads on plugins (discover_device_params)",
+                "Bulk parameter operations (get_chain_device_params_m4l, set_chain_device_param_m4l)",
+                "Split stereo pan reads (get_split_stereo)",
+                "set_device_hidden_parameter (any device with hidden state)",
+                "Note surgery with stable note IDs (modify_clip_notes, remove_clip_notes_by_id)",
+                "Device snapshot full state capture / morph (snapshot_device_state, morph_between_snapshots)",
+                "Property observation with low-latency events (observe_property, get_property_changes)",
+                "Audio analysis (analyze_track_audio, analyze_audio_clip)",
+            ]
+            response["m4l_setup_hint"] = (
+                "To unlock these capabilities, drag the AbletonBridge Max for Live "
+                "device onto any track in your set (a hidden utility track works fine). "
+                "The bridge will auto-connect within a few seconds — re-run "
+                "get_server_capabilities to confirm m4l_connected is true."
+            )
+
+        return json.dumps(response)
 
 
     @mcp.tool()

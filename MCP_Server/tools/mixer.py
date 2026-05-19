@@ -49,6 +49,24 @@ def register_tools(mcp):
         return f"Set track {track_index} send {send_index} to {result.get('value', value)}"
 
     @mcp.tool()
+    @_tool_handler("getting track sends")
+    def get_track_sends(ctx: Context, track_index: int) -> str:
+        """Get all send levels from a track to return tracks.
+
+        Returns a list of sends with the return name, current value, and
+        valid range. Use this to read the current send mix — get_track_info
+        and get_all_tracks_info also include this data, but this single-track
+        tool is cheaper when you only need one track's sends.
+
+        Parameters:
+        - track_index: The index of the source track
+        """
+        _validate_index(track_index, "track_index")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_track_sends", {"track_index": track_index})
+        return json.dumps(result)
+
+    @mcp.tool()
     @_tool_handler("setting crossfader")
     def set_crossfader(ctx: Context, value: float) -> str:
         """Set the master crossfader position.

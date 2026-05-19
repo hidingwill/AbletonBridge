@@ -279,3 +279,91 @@ def get_ableton_connection():
             raise Exception("Could not connect to Ableton. Make sure the Remote Script is running.")
 
     return state.ableton_connection
+
+
+# Module-level lock that serialises probe attempts so a flurry of
+# get_server_capabilities / dashboard polls don't race each other into
+# parallel reconnect storms when Ableton is briefly unavailable.
+_probe_lock = threading.Lock()
+
+
+def probe_ableton_connection(fast: bool = True) -> bool:
+    """Non-raising probe that reports whether the bridge can talk to Live.
+
+    Self-heals: if ``state.ableton_connection`` is missing or its socket is
+    dead, this attempts a single fresh connect (via ``AbletonConnection.connect``
+    directly, NOT the 3-attempt retry in ``get_ableton_connection``) so the
+    probe stays bounded — ``socket.connect`` to a non-listening localhost port
+    returns ECONNREFUSED in milliseconds. Returns ``True`` iff the connection
+    is currently usable.
+
+    This is the contract that ``get_server_capabilities`` and the dashboard
+    rely on so the ``ableton_connected`` flag reflects reality rather than
+    the residue of a long-stale ``state.ableton_connection``. Earlier code
+    only read ``state.ableton_connection`` passively, which meant a failed
+    process-startup connect attempt would leave the flag stuck at ``False``
+    forever — even after Live came up — until some unrelated data-returning
+    tool happened to call ``get_ableton_connection`` and refresh the global.
+
+    Parameters
+    ----------
+    fast:
+        When ``True`` (the default), perform only a single non-blocking
+        ``connect()`` if no live connection exists. When ``False``, fall back
+        to ``get_ableton_connection`` (3 attempts × 1s sleep) — useful from
+        contexts where a longer wait is acceptable.
+    """
+    # Happy path: existing socket still pointing at a live peer.
+    conn = state.ableton_connection
+    if conn is not None and conn.sock is not None:
+        try:
+            conn.sock.getpeername()
+            return True
+        except Exception:
+            # Fall through to reconnect attempt below.
+            pass
+
+    # Serialise reconnect attempts so concurrent probes don't pile up.
+    with _probe_lock:
+        # Re-check inside the lock — another thread may have already healed.
+        conn = state.ableton_connection
+        if conn is not None and conn.sock is not None:
+            try:
+                conn.sock.getpeername()
+                return True
+            except Exception:
+                pass
+
+        # Drop the stale handle if one exists.
+        if state.ableton_connection is not None:
+            try:
+                state.ableton_connection.disconnect()
+            except Exception:
+                pass
+            state.ableton_connection = None
+
+        if not fast:
+            # Caller asked for the full retry/validation path; let it raise
+            # and translate the raise into False so the probe contract holds.
+            try:
+                get_ableton_connection()
+                return state.ableton_connection is not None and state.ableton_connection.sock is not None
+            except Exception as e:
+                logger.debug("probe_ableton_connection: full reconnect failed: %s", e)
+                return False
+
+        # Fast path: a single connect attempt, no validation send_command,
+        # no inter-attempt sleeps. ECONNREFUSED is immediate; success is
+        # also immediate, and the next real tool call will validate via
+        # its own send_command path.
+        try:
+            candidate = AbletonConnection(host="localhost", port=9877)
+            if candidate.connect():
+                state.ableton_connection = candidate
+                state.ableton_connected_event.set()
+                logger.info("probe_ableton_connection: established new connection")
+                return True
+            return False
+        except Exception as e:
+            logger.debug("probe_ableton_connection: connect attempt failed: %s", e)
+            return False

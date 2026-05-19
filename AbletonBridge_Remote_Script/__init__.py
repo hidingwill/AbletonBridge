@@ -104,7 +104,9 @@ _MODIFYING_HANDLERS = {
     "create_midi_track": lambda song, p, ctrl: handlers.tracks.create_midi_track(song, p.get("index", -1), ctrl),
     "create_audio_track": lambda song, p, ctrl: handlers.tracks.create_audio_track(song, p.get("index", -1), ctrl),
     "create_return_track": lambda song, p, ctrl: handlers.tracks.create_return_track(song, ctrl),
-    "set_track_name": lambda song, p, ctrl: handlers.tracks.set_track_name(song, p.get("track_index", 0), p.get("name", ""), ctrl),
+    "set_track_name": lambda song, p, ctrl: handlers.tracks.set_track_name(
+        song, p.get("track_index", 0), p.get("name", ""),
+        track_type=p.get("track_type", "track"), ctrl=ctrl),
     "delete_track": lambda song, p, ctrl: handlers.tracks.delete_track(song, p.get("track_index", 0), ctrl),
     "duplicate_track": lambda song, p, ctrl: handlers.tracks.duplicate_track(song, p.get("track_index", 0), ctrl),
     "set_track_color": lambda song, p, ctrl: handlers.tracks.set_track_color(song, p.get("track_index", 0), p.get("color_index", 0), ctrl),
@@ -331,7 +333,8 @@ _MODIFYING_HANDLERS = {
     "move_device": lambda song, p, ctrl: handlers.devices.move_device(
         song, p.get("track_index", 0), p.get("device_index", 0),
         p.get("dest_track_index", 0), p.get("dest_position", 0),
-        track_type=p.get("track_type", "track"), ctrl=ctrl),
+        track_type=p.get("track_type", "track"),
+        dest_track_type=p.get("dest_track_type"), ctrl=ctrl),
     "set_device_enabled": lambda song, p, ctrl: handlers.devices.set_device_enabled(
         song, p.get("track_index", 0), p.get("device_index", 0),
         p.get("enabled", True), track_type=p.get("track_type", "track"), ctrl=ctrl),

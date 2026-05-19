@@ -1588,23 +1588,43 @@ def set_device_enabled(song, track_index, device_index, enabled, track_type="tra
         raise
 
 
-def move_device(song, track_index, device_index, dest_track_index, dest_position, track_type="track", ctrl=None):
-    """Move a device to a different position or track."""
+def move_device(song, track_index, device_index, dest_track_index, dest_position,
+                track_type="track", dest_track_type=None, ctrl=None):
+    """Move a device to a different position or track.
+
+    Supports moves within / between regular, return, and master tracks. If
+    dest_track_type is None it defaults to the source track_type — so
+    reordering devices on the master track works by specifying track_type
+    ="master" and the same track_index for source and dest.
+    """
+    if dest_track_type is None:
+        dest_track_type = track_type
     try:
         track = resolve_track(song, track_index, track_type)
         devices = list(track.devices)
         if device_index < 0 or device_index >= len(devices):
-            raise IndexError("Device index out of range")
+            raise IndexError("Device index out of range (track has {0} devices)".format(len(devices)))
         device = devices[device_index]
         device_name = device.name
-        dest_track = get_track(song, dest_track_index)
-        song.move_device(device, dest_track, int(dest_position))
+        dest_track = resolve_track(song, dest_track_index, dest_track_type)
+        # Clamp dest_position to a valid range for the destination chain.
+        # When moving within the same chain to a later slot Live still requires
+        # 0 <= pos <= len(devices) — out-of-range yields its opaque "internal error".
+        dest_devices_len = len(list(dest_track.devices))
+        pos = int(dest_position)
+        if pos < 0 or pos > dest_devices_len:
+            raise IndexError(
+                "dest_position {0} out of range — destination has {1} device(s), valid 0..{1}".format(
+                    pos, dest_devices_len))
+        song.move_device(device, dest_track, pos)
         return {
             "moved": True,
             "device_name": device_name,
             "from_track": track_index,
+            "from_track_type": track_type,
             "to_track": dest_track_index,
-            "to_position": dest_position,
+            "to_track_type": dest_track_type,
+            "to_position": pos,
         }
     except Exception as e:
         if ctrl:

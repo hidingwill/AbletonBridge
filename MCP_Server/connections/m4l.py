@@ -98,12 +98,14 @@ class M4LConnection:
             return self._build_osc_message("/discover_params", [
                 ("i", params["track_index"]),
                 ("i", params["device_index"]),
+                ("s", params.get("track_type", "track")),
                 ("s", request_id),
             ])
         elif command_type == "get_hidden_params":
             return self._build_osc_message("/get_hidden_params", [
                 ("i", params["track_index"]),
                 ("i", params["device_index"]),
+                ("s", params.get("track_type", "track")),
                 ("s", request_id),
             ])
         elif command_type == "set_hidden_param":
@@ -112,6 +114,7 @@ class M4LConnection:
                 ("i", params["device_index"]),
                 ("i", params["parameter_index"]),
                 ("f", params["value"]),
+                ("s", params.get("track_type", "track")),
                 ("s", request_id),
             ])
         elif command_type == "get_device_property":
@@ -137,6 +140,7 @@ class M4LConnection:
             return self._build_osc_message("/batch_set_hidden_params", [
                 ("i", params["track_index"]),
                 ("i", params["device_index"]),
+                ("s", params.get("track_type", "track")),
                 ("s", params_b64),
                 ("s", request_id),
             ])
@@ -187,6 +191,7 @@ class M4LConnection:
                 ("i", params["device_index"]),
                 ("i", params["parameter_index"]),
                 ("f", params["value"]),
+                ("s", params.get("track_type", "track")),
                 ("s", request_id),
             ])
         # --- Phase 5: Audio Analysis ---
@@ -215,6 +220,7 @@ class M4LConnection:
             return self._build_osc_message("/get_automation_states", [
                 ("i", params["track_index"]),
                 ("i", params["device_index"]),
+                ("s", params.get("track_type", "track")),
                 ("s", request_id),
             ])
         # --- Phase F1: Wire orphaned chain OSC builders ---
@@ -717,6 +723,7 @@ def _m4l_batch_set_params(
     track_index: int,
     device_index: int,
     parameters: List[Dict],
+    track_type: str = "track",
 ) -> Dict[str, Any]:
     """Set multiple hidden parameters by sending individual set_hidden_param
     commands sequentially.  More reliable than the base64-encoded batch OSC
@@ -734,6 +741,7 @@ def _m4l_batch_set_params(
                 "device_index": device_index,
                 "parameter_index": int(p["index"]),
                 "value": float(p["value"]),
+                "track_type": track_type,
             })
             if result.get("status") == "success":
                 ok += 1
