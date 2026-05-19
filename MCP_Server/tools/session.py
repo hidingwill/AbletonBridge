@@ -2,7 +2,7 @@
 import json
 from mcp.server.fastmcp import Context
 from MCP_Server.tools._base import _tool_handler, _m4l_result
-from MCP_Server.connections.ableton import get_ableton_connection
+from MCP_Server.connections.ableton import get_ableton_connection, probe_ableton_connection
 from MCP_Server.connections.m4l import get_m4l_connection
 from MCP_Server.validation import _validate_index, _validate_index_allow_negative, _validate_range
 import MCP_Server.state as state
@@ -23,15 +23,18 @@ def register_tools(mcp):
         When `m4l_connected` is false, the response includes a
         `m4l_dependent_capabilities` list and a `m4l_setup_hint` so the agent
         immediately knows what's blocked and how to unblock it.
+
+        ``ableton_connected`` is computed via an active probe (``probe_ableton_connection``):
+        if the cached connection is missing or dead, a single fast TCP connect to Live's
+        Remote Script (127.0.0.1:9877) is attempted before reporting. This prevents the
+        flag from staying stuck at ``false`` when the bridge process was started before
+        Live finished initialising — the old behaviour only read the cached state
+        variable, which was never refreshed unless an unrelated data-returning tool
+        happened to call ``get_ableton_connection`` first.
         """
         from MCP_Server import __version__
         m4l_sockets_ready, m4l_connected = get_m4l_status()
-        ableton_connected = bool(state.ableton_connection and state.ableton_connection.sock)
-        try:
-            if ableton_connected:
-                state.ableton_connection.sock.getpeername()
-        except Exception:
-            ableton_connected = False
+        ableton_connected = probe_ableton_connection(fast=True)
 
         response = {
             "server_version": __version__,

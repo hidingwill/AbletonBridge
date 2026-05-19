@@ -94,14 +94,28 @@ def get_m4l_status() -> tuple:
 
 
 def build_status_json() -> dict:
-    """Collect all dashboard status data into a JSON-serializable dict."""
-    ableton_connected = False
-    if state.ableton_connection and state.ableton_connection.sock:
-        try:
-            state.ableton_connection.sock.getpeername()
-            ableton_connected = True
-        except Exception:
-            pass
+    """Collect all dashboard status data into a JSON-serializable dict.
+
+    ``ableton_connected`` uses the same active probe that the
+    ``get_server_capabilities`` tool uses, so the dashboard self-heals
+    when the cached connection has gone stale (instead of staying
+    permanently stuck at ``false`` after a failed process-startup connect).
+    Imported lazily to keep dashboard module init independent of the
+    connections subpackage import order.
+    """
+    try:
+        from MCP_Server.connections.ableton import probe_ableton_connection
+        ableton_connected = probe_ableton_connection(fast=True)
+    except Exception:
+        # Fall back to the old passive check if the probe is unavailable
+        # for any reason (e.g. partial import during early startup).
+        ableton_connected = False
+        if state.ableton_connection and state.ableton_connection.sock:
+            try:
+                state.ableton_connection.sock.getpeername()
+                ableton_connected = True
+            except Exception:
+                pass
 
     m4l_sockets_ready, m4l_connected = get_m4l_status()
 
